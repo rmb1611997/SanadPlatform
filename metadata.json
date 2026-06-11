@@ -1,0 +1,6 @@
+{
+  "name": "سند",
+  "description": "منصة تعليمية متكاملة تجمع أفضل المدرسين والمحتوى التعليمي الحديث لمساعدة الطلاب",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -2,7 +2,7 @@ import { motion } from 'motion/react';
 import { Sparkles, ArrowRight, Play, Award, ShieldCheck, GraduationCap } from 'lucide-react';
 import { translations } from '../data';
 
-const heroImg = "/images/sanad_hero_illustration_1780793550823.png";
+const heroImg = "/images/herologo.png";
 
 interface HeroProps {
   lang: 'ar' | 'en';

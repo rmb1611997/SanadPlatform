@@ -25,7 +25,7 @@ export default function Footer({ lang }: FooterProps) {
           {/* Col 1: Brand description */}
           <div className="flex flex-col items-center md:items-start gap-4">
             <div className="flex items-center gap-3">
-              <img src="/images/logoshort.png" alt="Sanad" className="h-16 w-16 object-contain filter brightness-0 invert" referrerPolicy="no-referrer" />
+              <img src="/images/shortlogo.png" alt="Sanad" className="h-16 w-16 object-contain filter brightness-0 invert" referrerPolicy="no-referrer" />
               <span className="text-4xl font-black text-white tracking-tight">
                 {lang === 'ar' ? 'سند' : 'Sanad'}
               </span>

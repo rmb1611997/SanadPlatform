@@ -142,7 +142,7 @@ export default function Header({
           <div className="flex items-center gap-3">
             <a href="#home" onClick={handleLogoClick} className="flex items-center gap-3 group">
               <div className="p-1 rounded-xl group-hover:scale-105 transition-all duration-350 shrink-0">
-                <img src="/src/assets/images/logoshort.png" alt="Sanad" className="h-15 w-15 object-contain dark:brightness-0 dark:invert" referrerPolicy="no-referrer" />
+                <img src="/images/logoshort.png" alt="Sanad" className="h-15 w-15 object-contain dark:brightness-0 dark:invert" referrerPolicy="no-referrer" />
               </div>
               <div className="flex flex-col text-right">
                 <span className="text-3xl font-black tracking-tight leading-none bg-gradient-to-r from-indigo-600 to-blue-500 bg-clip-text text-transparent dark:!bg-none dark:!text-white">

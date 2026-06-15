@@ -29,7 +29,7 @@ export const getCourseImageSrc = (course: Course) => {
 
 export const CourseCard: React.FC<CourseCardProps> = ({ course, isAr, role, isSubscribed = false, onActionClick, onSubscribeClick }) => {
   const getActionText = () => {
-    if (role === 'teacher') return isAr ? 'إدارة الكورس' : 'Manage';
+    if (role === 'teacher') return isAr ? 'عرض الكورس' : 'View Course';
     if (role === 'admin') return isAr ? 'إدارة كاملة' : 'Administer';
     return isAr ? 'عرض الكورس' : 'View Course';
   };
@@ -108,14 +108,24 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, isAr, role, isSu
         </div>
 
         {/* TITLE */}
-        <h3 className="
-          text-xl font-black text-center
-          text-neutral-900 dark:text-white
-          group-hover:text-indigo-600
-          transition-colors duration-300
-        ">
-          {course.title}
-        </h3>
+        <div className="flex flex-col items-center gap-1.5">
+          <h3 className="
+            text-xl font-black text-center
+            text-neutral-900 dark:text-white
+            group-hover:text-indigo-600
+            transition-colors duration-300
+          ">
+            {course.title}
+          </h3>
+          
+          {role === 'student' && isSubscribed && (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full animate-in fade-in zoom-in duration-500">
+              <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+                {isAr ? '✅ مشترك في الكورس' : '✅ Enrolled in Course'}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* DESCRIPTION */}
         <p className="
@@ -155,40 +165,50 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, isAr, role, isSu
 
         <div className="flex items-center justify-between">
 
-          {/* PRICE OUTSTANDING PRESENTATION */}
+          {/* PRICE OR OWNERSHIP STATUS */}
           <div className="flex flex-col">
-            
-            <div className="flex flex-col gap-1 relative z-10">
-              {course.discountPrice ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-black text-neutral-400/80 dark:text-neutral-500 line-through decoration-rose-500 decoration-[3px]">
-                      {course.price}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 shadow-sm animate-pulse">
-                      {isAr ? 'خصم خاص 🔥' : 'Save 🔥'}
-                    </span>
-                  </div>
-                  <div className="flex items-baseline gap-1.5 px-3 py-1.5 bg-white dark:bg-neutral-900 rounded-xl border border-emerald-100 dark:border-emerald-900/50 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-700/50 hover:shadow-[0_4px_12px_-4px_rgba(16,185,129,0.3)] transition-all duration-300 cursor-default w-max">
+            {role === 'student' && isSubscribed ? (
+              <div className="flex flex-col gap-1 px-4 py-2 bg-emerald-50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-100 dark:border-emerald-900/50 shadow-sm">
+                <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-black text-xs">
+                  <span>✅ {isAr ? 'تم الاشتراك بنجاح' : 'Successfully Enrolled'}</span>
+                </div>
+                <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-tighter">
+                  {isAr ? 'المحتوى متاح بالكامل' : 'Full Access Active'}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1 relative z-10">
+                {course.discountPrice ? (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-black text-neutral-400/80 dark:text-neutral-500 line-through decoration-rose-500 decoration-[3px]">
+                        {course.price}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-rose-100 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 shadow-sm animate-pulse">
+                        {isAr ? 'خصم خاص 🔥' : 'Save 🔥'}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline gap-1.5 px-3 py-1.5 bg-white dark:bg-neutral-900 rounded-xl border border-emerald-100 dark:border-emerald-900/50 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-700/50 hover:shadow-[0_4px_12px_-4px_rgba(16,185,129,0.3)] transition-all duration-300 cursor-default w-max">
+                      <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-none">
+                        {course.discountPrice}
+                      </span>
+                      <span className="text-sm font-black text-emerald-500 dark:text-emerald-400">
+                        {course.country === 'EG' ? (isAr ? 'جنية' : 'EGP') : course.country === 'SA' ? (isAr ? 'ريال' : 'SAR') : course.currency}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-baseline gap-1.5 mt-1 px-3 py-1.5 bg-white dark:bg-neutral-900 rounded-xl border border-emerald-100 dark:border-emerald-900/50 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-700/50 hover:shadow-[0_4px_12px_-4px_rgba(16,185,129,0.3)] transition-all duration-300 cursor-default w-max">
                     <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-none">
-                      {course.discountPrice}
+                      {course.price}
                     </span>
                     <span className="text-sm font-black text-emerald-500 dark:text-emerald-400">
                       {course.country === 'EG' ? (isAr ? 'جنية' : 'EGP') : course.country === 'SA' ? (isAr ? 'ريال' : 'SAR') : course.currency}
                     </span>
                   </div>
-                </>
-              ) : (
-                <div className="flex items-baseline gap-1.5 mt-1 px-3 py-1.5 bg-white dark:bg-neutral-900 rounded-xl border border-emerald-100 dark:border-emerald-900/50 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-700/50 hover:shadow-[0_4px_12px_-4px_rgba(16,185,129,0.3)] transition-all duration-300 cursor-default w-max">
-                  <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-none">
-                    {course.price}
-                  </span>
-                  <span className="text-sm font-black text-emerald-500 dark:text-emerald-400">
-                    {course.country === 'EG' ? (isAr ? 'جنية' : 'EGP') : course.country === 'SA' ? (isAr ? 'ريال' : 'SAR') : course.currency}
-                  </span>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* BUTTONS WITH STRUCTURAL ALIGNMENT */}
@@ -205,7 +225,7 @@ export const CourseCard: React.FC<CourseCardProps> = ({ course, isAr, role, isSu
                 w-full text-center cursor-pointer border-0
               "
             >
-              {role === 'teacher' ? '⚙️' : role === 'admin' ? '🛡️' : '🎓'} {getActionText()}
+              {role === 'teacher' ? '📖' : role === 'admin' ? '🛡️' : (isSubscribed ? '📖' : '🎓')} {getActionText()}
             </button>
 
             {role === 'student' && !isSubscribed && (

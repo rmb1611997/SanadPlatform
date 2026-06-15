@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   BookOpen, Play, FileText, CheckCircle, AlertCircle, 
-  ArrowLeft, Eye, HelpCircle, Send, Check, DollarSign, Award, Download, Lock
+  ArrowLeft, Eye, HelpCircle, Send, Check, DollarSign, Award, Download, Lock, Copy
 } from 'lucide-react';
 import { Course, CourseModule, CourseModuleItem, Teacher } from '../types';
 import { CourseCard, getCourseImageSrc } from './CourseCard';
@@ -13,48 +13,37 @@ import { teachersData } from '../data';
 const getEmbedUrl = (url: string, source?: string): { isEmbeddable: boolean; embedUrl: string } => {
   if (!url) return { isEmbeddable: false, embedUrl: '' };
 
+  // 1. Bunny Stream Handling
   const isBunny = source === 'bunny' || url.includes('bunny') || url.includes('iframe.mediadelivery.net');
-  
   if (isBunny) {
-    const isLocalOrMp4 = url.endsWith('.mp4') || url.includes('.m3u8') || url.endsWith('.webm');
-    if (isLocalOrMp4) {
-      return { isEmbeddable: false, embedUrl: url };
-    }
-    // For bunny CDN iframe link, it is ready to be used as embed URL
+    const isLocalOrMp4 = url.endsWith('.mp4') || url.includes('.m3u8') || url.endsWith('.webm') || url.includes('playlist.m3u8');
+    if (isLocalOrMp4) return { isEmbeddable: false, embedUrl: url };
+    if (url.includes('iframe.mediadelivery.net')) return { isEmbeddable: true, embedUrl: url };
     return { isEmbeddable: true, embedUrl: url };
   }
 
-  // YouTube processing
-  let videoId = '';
-  const regExpParam = /[?&]v=([^&#]*)/;
-  const matchParam = url.match(regExpParam);
-  if (matchParam && matchParam[1]) {
-    videoId = matchParam[1];
-  } else {
-    const regExpShort = /youtu\.be\/([^?&#]*)/;
-    const matchShort = url.match(regExpShort);
-    if (matchShort && matchShort[1]) {
-      videoId = matchShort[1];
-    } else {
-      const regExpEmbed = /youtube\.com\/embed\/([^?&#]*)/;
-      const matchEmbed = url.match(regExpEmbed);
-      if (matchEmbed && matchEmbed[1]) {
-        videoId = matchEmbed[1];
-      } else {
-        const regExpShorts = /youtube\.com\/shorts\/([^?&#]*)/;
-        const matchShorts = url.match(regExpShorts);
-        if (matchShorts && matchShorts[1]) {
-          videoId = matchShorts[1];
-        }
-      }
-    }
+  // 2. YouTube Parsing
+  const ytRegExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+  const ytMatch = url.match(ytRegExp);
+  if (ytMatch && ytMatch[1]) {
+    return { isEmbeddable: true, embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1&rel=0` };
   }
 
-  if (videoId) {
-    return { isEmbeddable: true, embedUrl: `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0` };
+  // 3. Vimeo Parsing
+  const vimeoRegExp = /(?:vimeo\.com\/|player\.vimeo\.com\/video\/)([0-9]+)/;
+  const vimeoMatch = url.match(vimeoRegExp);
+  if (vimeoMatch && vimeoMatch[1]) {
+    return { isEmbeddable: true, embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1` };
   }
 
-  if (url.includes('iframe') || url.includes('embed') || url.includes('mediadelivery.net') || url.includes('youtube.com')) {
+  // Fallback for direct iframe/embed links
+  if (
+    url.includes('iframe') || 
+    url.includes('embed') || 
+    url.includes('mediadelivery.net') || 
+    url.includes('youtube.com') ||
+    url.includes('vimeo.com')
+  ) {
     return { isEmbeddable: true, embedUrl: url };
   }
 
@@ -68,6 +57,7 @@ interface StudentCoursesTabProps {
     country?: 'EG' | 'SA';
     grade?: string;
     isGuest?: boolean;
+    role?: 'student' | 'teacher' | 'admin';
   };
   lang: 'ar' | 'en';
   walletBalance: number;
@@ -94,7 +84,6 @@ export default function StudentCoursesTab({
   onRequireAuth,
   onTeacherSelect
 }: StudentCoursesTabProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'all' | 'mine'>('all');
   const [insideCourse, setInsideCourse] = useState<Course | null>(null);
   
   // Custom interaction states for Inside Course
@@ -116,6 +105,126 @@ export default function StudentCoursesTab({
 
   const [enrollError, setEnrollError] = useState('');
   const [enrollSuccess, setEnrollSuccess] = useState('');
+
+  // Fawry Direct Course Purchase states
+  const [courseFawryInvoice, setCourseFawryInvoice] = useState<{ payCode: string; amount: number; courseId: string; date: string } | null>(null);
+  const [courseIsCopied, setCourseIsCopied] = useState(false);
+
+  const handleGenerateCourseFawryCode = (course: Course) => {
+    setEnrollError('');
+    setEnrollSuccess('');
+
+    if (user.phone === 'guest') {
+      if (onRequireAuth) {
+        onRequireAuth('login', course.id);
+      }
+      return;
+    }
+
+    const price = (course.discountPrice && Number(course.discountPrice) < course.price) ? Number(course.discountPrice) : course.price;
+    const randomPayCode = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+
+    // Set invoice details
+    setCourseFawryInvoice({
+      payCode: randomPayCode,
+      amount: price,
+      courseId: course.id,
+      date: new Date().toISOString()
+    });
+  };
+
+  const handleSimulateDirectFawryPayment = (course: Course) => {
+    if (!courseFawryInvoice) return;
+    
+    // Enroll / subscribe the course
+    const updated = [...purchasedCourseIds, course.id];
+    setPurchasedCourseIds(updated);
+
+    const price = courseFawryInvoice.amount;
+
+    // Record sales logging in sanad_sales_v4 and split the profits with instructors!
+    try {
+      const salesKey = 'sanad_sales_v4';
+      let currentSales: any[] = [];
+      const stored = localStorage.getItem(salesKey);
+      if (stored) {
+        currentSales = JSON.parse(stored);
+      }
+      
+      const newSale = {
+        id: `TXN-${Math.floor(95100 + Math.random() * 10000)}`,
+        courseId: course.id,
+        courseTitle: course.title,
+        teacherName: course.teacher,
+        price: price,
+        studentName: user.name,
+        studentPhone: user.phone,
+        studentCountry: user.country || 'EG',
+        timestamp: new Date().toISOString(),
+        paymentType: 'Fawry Direct (دفع فوري مباشر)',
+        subject: course.category === 'physics' ? 'الفيزياء' : (course.category === 'math' ? 'الرياضيات' : (course.category === 'chemistry' ? 'الكيمياء' : (course.category === 'biology' ? 'علم الأحياء' : 'اللغة العربية'))),
+        grade: course.level || 'الصف الثالث الثانوي'
+      };
+
+      currentSales = [newSale, ...currentSales];
+      localStorage.setItem(salesKey, JSON.stringify(currentSales));
+
+      // Fetch rates to update teacher's individual balance
+      const courseRatesSaved = localStorage.getItem('sanad_course_rates');
+      let crRates: any = {};
+      if (courseRatesSaved) crRates = JSON.parse(courseRatesSaved);
+
+      const teacherRatesSaved = localStorage.getItem('sanad_teacher_share_rates');
+      let tRates: any = {};
+      if (teacherRatesSaved) tRates = JSON.parse(teacherRatesSaved);
+
+      const rate = crRates[course.id] !== undefined 
+        ? crRates[course.id] 
+        : (tRates[course.teacher] !== undefined ? tRates[course.teacher] : 70);
+
+      const tEarn = (price * rate) / 100;
+      
+      const teacherWalletKey = `sanad_teacher_wallet_${course.teacher}`;
+      const oldBal = Number(localStorage.getItem(teacherWalletKey) || '0');
+      localStorage.setItem(teacherWalletKey, (oldBal + tEarn).toString());
+    } catch (err) {
+      console.error('Error logging real-time profit split transaction in direct fawry payment:', err);
+    }
+
+    // Record transaction in sanad_financial_transactions_v1
+    try {
+      const rawTxs = localStorage.getItem('sanad_financial_transactions_v1');
+      let txsList: any[] = [];
+      if (rawTxs) {
+        try { txsList = JSON.parse(rawTxs); } catch (e) {}
+      }
+
+      const purchaseTx = {
+        id: `TX-${Math.floor(10000 + Math.random() * 90000)}`,
+        studentName: user.name,
+        studentPhone: user.phone,
+        type: 'purchase',
+        amount: price,
+        currency: 'EGP',
+        status: 'success',
+        date: new Date().toISOString(),
+        method: isAr ? 'فوري مباشر (Fawry Direct)' : 'Fawry Direct Course Pay',
+        reference: `FAW-CRS-${courseFawryInvoice.payCode}`,
+        notes: isAr ? `شراء كورسات ودفع مباشر فوري مبيعات` : `Direct course purchase via Fawry Pay Code`
+      };
+
+      localStorage.setItem('sanad_financial_transactions_v1', JSON.stringify([purchaseTx, ...txsList]));
+    } catch (e) {
+      console.error('Error logging financial transaction for direct payment:', e);
+    }
+
+    setEnrollSuccess(
+      isAr 
+        ? `🎉 تم تأكيد السداد بنجاح عبر كود فوري! تم الاشتراك وتفعيل كورس "${course.title}" بنجاح، تصفح المحتويات وحل الواجبات التفاعلية الآن.`
+        : `🎉 Payment confirmed via Fawry Code! Subscribed and unlocked "${course.title}" successfully.`
+    );
+    setCourseFawryInvoice(null);
+  };
 
   // Course watch history and completion scores loaded from localStorage
   const [watchProgress, setWatchProgress] = useState<Record<string, boolean>>(() => {
@@ -391,16 +500,18 @@ export default function StudentCoursesTab({
     return isAr ? defaultCourses : engCourses;
   };
 
-  const allCourses = importCoursesList().filter(course => {
-    if (!user || !user.country) return true;
-    return course.country === 'both' || course.country === user.country;
-  });
+  const allCourses = useMemo(() => {
+    return importCoursesList().filter(course => {
+      if (!user || !user.country) return true;
+      return course.country === 'both' || course.country === user.country;
+    });
+  }, [user.country, user, lang]);
 
   // Subscribed courses
   const myCourses = allCourses.filter(course => purchasedCourseIds.includes(course.id));
 
   useEffect(() => {
-    if (initialCourseId) {
+    if (initialCourseId && (!insideCourse || insideCourse.id !== initialCourseId)) {
       const course = allCourses.find(c => c.id === initialCourseId);
       if (course) {
         handleEnterCourse(course);
@@ -411,7 +522,7 @@ export default function StudentCoursesTab({
         handleEnterCourse(allCourses[0]);
       }
     }
-  }, [initialCourseId, initialCourseAction, user.isGuest, allCourses, insideCourse]);
+  }, [initialCourseId, initialCourseAction, user.isGuest, allCourses]);
 
   // Helper function to handle entering any course directly
   const handleEnterCourse = (course: Course) => {
@@ -462,6 +573,55 @@ export default function StudentCoursesTab({
     setWalletBalance(prev => prev - finalPrice);
     const updated = [...purchasedCourseIds, course.id];
     setPurchasedCourseIds(updated);
+
+    // Record transaction detail globally in sanad_sales_v4
+    try {
+      const salesKey = 'sanad_sales_v4';
+      let currentSales: any[] = [];
+      const stored = localStorage.getItem(salesKey);
+      if (stored) {
+        currentSales = JSON.parse(stored);
+      }
+      
+      const newSale = {
+        id: `TXN-${Math.floor(95100 + Math.random() * 10000)}`,
+        courseId: course.id,
+        courseTitle: course.title,
+        teacherName: course.teacher,
+        price: finalPrice,
+        studentName: user.name,
+        studentPhone: user.phone,
+        studentCountry: user.country || 'EG',
+        timestamp: new Date().toISOString(),
+        subject: course.category === 'physics' ? 'الفيزياء' : (course.category === 'math' ? 'الرياضيات' : (course.category === 'chemistry' ? 'الكيمياء' : (course.category === 'biology' ? 'علم الأحياء' : 'اللغة العربية'))),
+        grade: course.level || 'الصف الثالث الثانوي'
+      };
+
+      currentSales = [newSale, ...currentSales];
+      localStorage.setItem(salesKey, JSON.stringify(currentSales));
+
+      // Fetch rates to update teacher's individual balance
+      const courseRatesSaved = localStorage.getItem('sanad_course_rates');
+      let crRates: any = {};
+      if (courseRatesSaved) crRates = JSON.parse(courseRatesSaved);
+
+      const teacherRatesSaved = localStorage.getItem('sanad_teacher_share_rates');
+      let tRates: any = {};
+      if (teacherRatesSaved) tRates = JSON.parse(teacherRatesSaved);
+
+      const rate = crRates[course.id] !== undefined 
+        ? crRates[course.id] 
+        : (tRates[course.teacher] !== undefined ? tRates[course.teacher] : 70);
+
+      const tEarn = (finalPrice * rate) / 100;
+      
+      const teacherWalletKey = `sanad_teacher_wallet_${course.teacher}`;
+      const oldBal = Number(localStorage.getItem(teacherWalletKey) || '0');
+      localStorage.setItem(teacherWalletKey, (oldBal + tEarn).toString());
+    } catch (err) {
+      console.error('Error logging real-time profit split transaction:', err);
+    }
+
     setEnrollSuccess(
       isAr 
         ? `🎉 مبارك! تم اشتراكك بنجاح في كورس "${course.title}". تصفحه الآن في قسم "كورساتي".`
@@ -499,55 +659,22 @@ export default function StudentCoursesTab({
       {/* Main Course Hub UI */}
       {!insideCourse ? (
         <div className="space-y-6">
-          {/* Top Sub-Tabs Toggle: All Courses vs My Courses */}
-          <div className="flex border-b border-neutral-200 dark:border-neutral-700 pb-px">
-            <button
-              id="btn_all_courses_tab"
-              onClick={() => {
-                setActiveSubTab('all');
-                dismissAlerts();
-              }}
-              className={`flex-1 py-3 text-center text-sm font-black transition relative ${
-                activeSubTab === 'all'
-                  ? 'text-indigo-600 dark:text-indigo-400 font-extrabold border-b-2 border-indigo-600 dark:border-indigo-400'
-                  : 'text-neutral-550 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100'
-              }`}
-            >
-              📚 {isAr ? 'جميع كورسات المنصة (All Courses)' : 'Discover All Platform Courses'}
-            </button>
-            <button
-              id="btn_my_courses_tab"
-              onClick={() => {
-                setActiveSubTab('mine');
-                dismissAlerts();
-              }}
-              className={`flex-1 py-3 text-center text-sm font-black transition relative ${
-                activeSubTab === 'mine'
-                  ? 'text-indigo-600 dark:text-indigo-400 font-extrabold border-b-2 border-indigo-600 dark:border-indigo-400'
-                  : 'text-neutral-550 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100'
-              }`}
-            >
-              📌 {isAr ? 'كورساتي (My Courses)' : 'My Enrolled Courses'}
-              {myCourses.length > 0 && (
-                <span className="ml-1.5 px-2 py-0.5 text-[10px] rounded-full bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-300 font-bold">
-                  {myCourses.length}
-                </span>
-              )}
-            </button>
-          </div>
-
-          {/* ACTIVE TAB: ALL COURSES */}
-          {activeSubTab === 'all' && (
-            <div className="space-y-4">
-              <div className="bg-indigo-50/50 dark:bg-indigo-950/10 p-4 rounded-2xl border border-indigo-100/50 dark:border-indigo-900/20 text-center">
-                <p className="text-xs font-bold text-indigo-800 dark:text-indigo-300">
-                  💡 {isAr ? 'تصفح كل المناهج المتاحة وقم بتوسيع نطاق دراستك. اضغط على "اشترك الآن" للتفعيل الفوري.' : 'Discover and subscribe to advanced high school programs instantly.'}
-                </p>
+          <div className="space-y-4">
+            {myCourses.length === 0 ? (
+              <div className="p-12 text-center bg-white dark:bg-neutral-800 rounded-3xl border border-neutral-200 dark:border-neutral-700 space-y-4">
+                <BookOpen className="h-12 w-12 text-neutral-300 mx-auto" />
+                <div className="space-y-1">
+                  <p className="text-sm font-black text-neutral-800 dark:text-white">
+                    {isAr ? 'لا يوجد أي اشتراكات جارية في حسابك حالياً.' : 'You have not enrolled in any courses yet.'}
+                  </p>
+                  <p className="text-xs text-neutral-400 font-medium">
+                    {isAr ? 'يرجى التواصل مع الإدارة أو شحن رصيدك لتفعيل الكورسات المطلوبة.' : 'Please contact administration or top-up your wallet to activate courses.'}
+                  </p>
+                </div>
               </div>
-
-              <div id="student_all_courses_grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {allCourses.filter(course => course.isVisible !== false).map((course) => {
-                  const isOwned = purchasedCourseIds.includes(course.id);
+            ) : (
+              <div id="student_my_courses_grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {myCourses.map((course) => {
                   return (
                     <motion.div 
                       key={course.id} 
@@ -558,61 +685,15 @@ export default function StudentCoursesTab({
                         course={course} 
                         isAr={isAr} 
                         role="student" 
-                        isSubscribed={isOwned}
+                        isSubscribed={true}
                         onActionClick={() => handleEnterCourse(course)} 
-                        onSubscribeClick={() => handleSubscribe(course)}
                       />
                     </motion.div>
                   );
                 })}
               </div>
-            </div>
-          )}
-
-          {/* ACTIVE TAB: MY COURSES */}
-          {activeSubTab === 'mine' && (
-            <div className="space-y-4">
-              {myCourses.length === 0 ? (
-                <div className="p-12 text-center bg-white dark:bg-neutral-800 rounded-3xl border border-neutral-200 dark:border-neutral-700 space-y-4">
-                  <BookOpen className="h-12 w-12 text-neutral-300 mx-auto" />
-                  <div className="space-y-1">
-                    <p className="text-sm font-black text-neutral-800 dark:text-white">
-                      {isAr ? 'لا يوجد أي اشتراكات جارية في حسابك حالياً.' : 'You have not enrolled in any courses yet.'}
-                    </p>
-                    <p className="text-xs text-neutral-400">
-                      {isAr ? 'تصفح قائمة "جميع كورسات المنصة" لتتمكن من تفعيل مناهجك المفضلة والبدء بالدراسة.' : 'Go to all courses tab and spend some credits to unlock premium tracks.'}
-                    </p>
-                  </div>
-                  <button 
-                    onClick={() => setActiveSubTab('all')}
-                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl"
-                  >
-                    {isAr ? 'اكتشف كورسات جديدة الآن' : 'Discover Courses Now'}
-                  </button>
-                </div>
-              ) : (
-                <div id="student_my_courses_grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {myCourses.map((course) => {
-                    return (
-                      <motion.div 
-                        key={course.id} 
-                        whileHover={{ y: -8 }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-                      >
-                        <CourseCard 
-                          course={course} 
-                          isAr={isAr} 
-                          role="student" 
-                          isSubscribed={true}
-                          onActionClick={() => handleEnterCourse(course)} 
-                        />
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
       ) : (
         /* 📖 COURSE INSIDE VIEW */
@@ -662,6 +743,14 @@ export default function StudentCoursesTab({
                 <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-100 to-sky-200 leading-tight">
                   {insideCourse.title}
                 </h1>
+
+                {purchasedCourseIds.includes(insideCourse.id) && (
+                  <div className="mt-2 flex items-center gap-2 px-4 py-2 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl w-max backdrop-blur-md">
+                    <span className="text-emerald-400 text-xs font-black">
+                      ✅ {isAr ? 'أنت مشترك في هذا الكورس' : 'You are enrolled in this course'}
+                    </span>
+                  </div>
+                )}
 
                 {/* Description Placement beneath Course Title */}
                 <p className="text-xs sm:text-sm text-indigo-200/95 leading-relaxed font-bold max-w-xl">
@@ -1004,6 +1093,179 @@ export default function StudentCoursesTab({
             </div>
           )}
 
+          {/* Subscription Checkouts & Fawry Direct Code Pay Banners */}
+          {!purchasedCourseIds.includes(insideCourse.id) && (
+            <div className="p-6 rounded-3xl bg-neutral-50 dark:bg-neutral-850 border-2 border-indigo-500/20 shadow-md space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-neutral-155 dark:border-neutral-750 pb-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-black tracking-wider uppercase bg-rose-500/10 border border-rose-500/30 text-rose-500 px-3 py-1 rounded-full inline-block">
+                    🔒 {isAr ? 'محتوى مدفوع - غير مشترك' : 'Premium - Enrollment Required'}
+                  </span>
+                  <h4 className="text-base font-black text-neutral-900 dark:text-white">
+                    {isAr ? 'تفعيل الاشتراك للوصول الكامل للمحاضرات' : 'Complete Enrollment to Unlock Lessons'}
+                  </h4>
+                  <p className="text-[11px] text-neutral-455 dark:text-neutral-500 font-medium leading-relaxed">
+                    {isAr 
+                      ? 'هذا الكورس مدفوع. بمجرد تفعيله، ستفتح لك جميع المحاضرات، مرفقات الـ PDF، والواجبات التفاعلية مع حفظ تقارير درجاتك تلقائياً.'
+                      : 'This is a premium course. Enrolling grants full life-long access to video lectures, PDF items, assessments, and grade dashboards.'}
+                  </p>
+                </div>
+                
+                {/* Course Cost & Wallet Balances */}
+                <div className="flex sm:flex-col items-baseline sm:items-end justify-between bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-805 shrink-0">
+                  <div className="text-right">
+                    <span className="text-[9px] text-neutral-400 font-bold block">{isAr ? 'قيمة الاشتراك الكلية:' : 'Course Price:'}</span>
+                    <span className="text-lg font-black font-mono text-indigo-600 dark:text-indigo-400">
+                      {(insideCourse.discountPrice && Number(insideCourse.discountPrice) < insideCourse.price) ? Number(insideCourse.discountPrice) : insideCourse.price} {isAr ? 'جنيه' : 'EGP'}
+                    </span>
+                  </div>
+                  <div className="sm:text-right text-right">
+                    <span className="text-[9px] text-neutral-400 font-bold block">{isAr ? 'رصيد محفظتك حالياً:' : 'Your Wallet Balance:'}</span>
+                    <span className="text-xs font-bold font-mono text-neutral-700 dark:text-gray-300">
+                      {walletBalance} {isAr ? 'جنيه' : 'EGP'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Success / Error within this card */}
+              {!courseFawryInvoice ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    
+                    {/* Method 1: Wallet direct subscription (ONLY if balance is sufficient) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Call the existing handleSubscribe method of StudentCoursesTab
+                        handleSubscribe(insideCourse);
+                      }}
+                      disabled={walletBalance < ((insideCourse.discountPrice && Number(insideCourse.discountPrice) < insideCourse.price) ? Number(insideCourse.discountPrice) : insideCourse.price)}
+                      className={`py-3 px-4 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 transition-all ${
+                        walletBalance >= ((insideCourse.discountPrice && Number(insideCourse.discountPrice) < insideCourse.price) ? Number(insideCourse.discountPrice) : insideCourse.price)
+                          ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm pointer-events-auto cursor-pointer'
+                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed border border-neutral-200 dark:border-neutral-700/60'
+                      }`}
+                    >
+                      <span className="font-black text-center">💳 {isAr ? 'اشتراك فوري (من رصيد المحفظة)' : 'Pay via Wallet Balance'}</span>
+                      {walletBalance < ((insideCourse.discountPrice && Number(insideCourse.discountPrice) < insideCourse.price) ? Number(insideCourse.discountPrice) : insideCourse.price) && (
+                        <span className="text-[9px] opacity-80 text-rose-500 font-semibold text-center">
+                          {isAr ? '(رصيد محفظتك غير كافٍ)' : '(Insufficient balance)'}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Method 2: Direct pay code via Fawry */}
+                    <button
+                      type="button"
+                      onClick={() => handleGenerateCourseFawryCode(insideCourse)}
+                      className="py-3 px-4 rounded-xl bg-amber-500 text-neutral-950 font-black text-xs hover:bg-amber-450 shadow-sm flex flex-col items-center justify-center gap-1 transition"
+                    >
+                      <span>⚡ {isAr ? 'اشترك عبر كود فوري مباشرة' : 'Subscribe via Direct Fawry Code'}</span>
+                      <span className="text-[9px] opacity-85 font-medium text-center">
+                        {isAr ? '(دون الحاجة لشحن حساب المحفظة أولاً)' : '(No separate wallet recharge needed)'}
+                      </span>
+                    </button>
+
+                  </div>
+
+                  {walletBalance < ((insideCourse.discountPrice && Number(insideCourse.discountPrice) < insideCourse.price) ? Number(insideCourse.discountPrice) : insideCourse.price) && (
+                    <p className="text-[9.5px] text-neutral-400 dark:text-neutral-500 text-center leading-normal">
+                      💡 {isAr 
+                        ? 'نصيحة: يمكنك شحن حساب محفظتك أولاً من تبويب "المحفظة الإلكترونية" بقيم شحن محددة والحصول على هدايا السداد، أو استخدام خيار كود فوري المباشر أعلاه.' 
+                        : 'Tip: You can top-up your e-wallet beforehand from the dedicated "Wallet" tab or generate an instant direct billing code using Fawry above.'}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                /* Unpaid Course Fawry Billing Code Card */
+                <div className="space-y-4 pt-1">
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/30 space-y-3">
+                    <div className="text-center">
+                      <span className="text-[9px] font-black uppercase text-amber-600 dark:text-amber-400">
+                        {isAr ? 'رقم كود سداد كورس فوري المباشر' : 'Direct Course Payment Fawry Code'}
+                      </span>
+                      
+                      <div className="mt-1.5 flex items-center justify-center gap-2">
+                        <span className="text-xl sm:text-2xl font-black font-mono text-neutral-900 dark:text-amber-400 tracking-wider">
+                          {courseFawryInvoice.payCode}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            try {
+                              navigator.clipboard.writeText(courseFawryInvoice.payCode);
+                              setCourseIsCopied(true);
+                              setTimeout(() => setCourseIsCopied(false), 2000);
+                            } catch (err) {}
+                          }}
+                          className="p-1.5 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-750 dark:text-neutral-200 shadow-xs transition"
+                        >
+                          {courseIsCopied ? (
+                            <Check className="h-4 w-4 text-emerald-500" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-amber-500/20 pt-2 flex justify-between items-center text-xs font-black text-amber-900 dark:text-amber-250">
+                      <span>{isAr ? 'المبلغ المطلوب سداده للفاتورة:' : 'Amount Due:'}</span>
+                      <span className="text-sm font-mono">{courseFawryInvoice.amount} EGP</span>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400 space-y-1.5 leading-relaxed font-semibold">
+                    <p className="text-neutral-800 dark:text-neutral-200 font-bold">🏪 {isAr ? 'طريقة السداد وتفعيل صلاحية الكورس:' : 'Settle bill instructions:'}</p>
+                    <p className="flex gap-1">
+                      <span>•</span>
+                      <span>
+                        {isAr 
+                          ? `توجه لكشك تجاري لديه Fawry واطلب السداد لـ "سند التعليمية" بكود الخدمة (789).` 
+                          : `Visit any kiosk with Fawry, select Service Code (789) for service "Sanad".`}
+                      </span>
+                    </p>
+                    <p className="flex gap-1">
+                      <span>•</span>
+                      <span>
+                        {isAr 
+                          ? `قدم رقم المعاملة للتاجر: ${courseFawryInvoice.payCode} وسدد ${courseFawryInvoice.amount} جنيه نقداً.` 
+                          : `Provide code: ${courseFawryInvoice.payCode} and settle ${courseFawryInvoice.amount} EGP cash.`}
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* Sandbox POS Merchant billing simulator */}
+                  <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-neutral-900 border border-dashed border-indigo-500/30 text-center space-y-2">
+                    <p className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400">
+                      🚨 {isAr ? 'سداد فوري افتراضي Sandbox لغرض اختبار الفواتير المباشرة' : 'Direct Pay Sandbox POS Simulator'}
+                    </p>
+                    <p className="text-[9px] text-neutral-455 leading-relaxed">
+                      {isAr 
+                        ? 'اضغط لتأكيد وصول Cash في ماكينة فوري الافتراضية، وسيقوم السيرفر بتفعيل اشتراك الكورس كلياً تلقائياً.' 
+                        : 'Settle the cash pay invoice layout simulation directly to access Premium lessons without spending real funds.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleSimulateDirectFawryPayment(insideCourse)}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black rounded-xl transition duration-300 shadow-xs"
+                    >
+                      💵 {isAr ? 'تأكيد السداد النقدي وتفعيل الكورس فوراً ✅' : 'Simulate Cash Payment and Unlock Course ✅'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCourseFawryInvoice(null)}
+                      className="w-full text-[9px] text-neutral-400 hover:underline pt-1 block"
+                    >
+                      {isAr ? 'إلغاء المعاملة والرجوع لطرق الدفع الأخرى' : 'Cancel and return to checkout methods'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Sequential Modules (المجموعات) List */}
           <div className="space-y-6 pt-4">
             
@@ -1070,7 +1332,7 @@ export default function StudentCoursesTab({
                           return (
                             <div 
                               key={item.id} 
-                              style={{ id: item.id }}
+                              id={item.id}
                               className="p-5 rounded-2xl bg-neutral-50 hover:bg-neutral-100/70 dark:bg-neutral-900/30 dark:hover:bg-neutral-900/60 border border-neutral-100 dark:border-neutral-800 transition duration-300 flex flex-col md:flex-row md:items-center md:justify-between gap-4"
                             >
                               <div className="flex items-center gap-4">

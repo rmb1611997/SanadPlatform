@@ -11,6 +11,7 @@ interface TeacherOverviewPageProps {
   allCourses: Course[];
   teacherCourses: Course[];
   setActiveTab: (tab: any) => void;
+  onPreviewCourse: (courseId: string) => void;
 }
 
 export default function TeacherOverviewPage({
@@ -19,12 +20,11 @@ export default function TeacherOverviewPage({
   teacherMeta,
   allCourses,
   teacherCourses,
-  setActiveTab
+  setActiveTab,
+  onPreviewCourse
 }: TeacherOverviewPageProps) {
   const isAr = lang === 'ar';
-  const [filterMode, setFilterMode] = useState<'mine' | 'all'>('mine');
-
-  const visibleCourses = filterMode === 'mine' ? teacherCourses : allCourses;
+  const visibleCourses = teacherCourses;
 
   return (
     <div className="space-y-8 text-right">
@@ -82,32 +82,6 @@ export default function TeacherOverviewPage({
 
       {/* Courses Overview List (Full Width Grid) */}
       <div className="space-y-6">
-        <div className="flex justify-center w-full">
-          {/* Centered Filter Toggle Controls */}
-          <div className="flex bg-neutral-100 dark:bg-neutral-900 p-1.5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
-            <button
-              onClick={() => setFilterMode('mine')}
-              className={`px-5 py-2 rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer select-none ${
-                filterMode === 'mine'
-                  ? 'bg-indigo-650 text-white shadow-xs'
-                  : 'text-neutral-500 dark:text-neutral-450 hover:text-neutral-800 dark:hover:text-neutral-200'
-              }`}
-            >
-              {isAr ? 'مقرراتي الفعالة' : 'My Courses'}
-            </button>
-            <button
-              onClick={() => setFilterMode('all')}
-              className={`px-5 py-2 rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer select-none ${
-                filterMode === 'all'
-                  ? 'bg-indigo-650 text-white shadow-xs'
-                  : 'text-neutral-500 dark:text-neutral-450 hover:text-neutral-800 dark:hover:text-neutral-200'
-              }`}
-            >
-              {isAr ? 'جميع الكورسات بالمنصة' : 'All Courses'}
-            </button>
-          </div>
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {visibleCourses.map((course) => (
             <CourseCard 
@@ -115,7 +89,7 @@ export default function TeacherOverviewPage({
               course={course} 
               isAr={isAr} 
               role="teacher" 
-              onActionClick={() => setActiveTab('manage_courses')} 
+              onActionClick={() => onPreviewCourse(course.id)} 
             />
           ))}
         </div>

@@ -8,6 +8,7 @@ import { GraduationCap } from 'lucide-react';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import Courses from './components/Courses';
+import SmartInstallPrompt from './components/SmartInstallPrompt';
 import Teachers from './components/Teachers';
 import Features from './components/Features';
 import TeacherProfilePage from './components/TeacherProfilePage';
@@ -19,6 +20,7 @@ import AuthModal from './components/AuthModal';
 import StudentDashboard from './components/StudentDashboard';
 import TeacherDashboard from './components/TeacherDashboard';
 import AdminDashboard from './components/AdminDashboard';
+import RamadanTheme from './components/RamadanTheme';
 
 import { seedDatabaseIfNeeded, getAllUsers } from './utils/db';
 import { coursesData, teachersData, featuresData, reviewsData, faqData, translations } from './data';
@@ -93,7 +95,8 @@ export default function App() {
           if (found.country) {
             setSelectedCountry(found.country);
           }
-          setCurrentView('dashboard');
+          // Students land on 'landing' by default, Staff land on 'dashboard'
+          setCurrentView(found.role === 'student' ? 'landing' : 'dashboard');
         }
       }
     };
@@ -111,6 +114,13 @@ export default function App() {
     }
   }, [darkMode]);
 
+  // Redirect teachers to dashboard if they land on landing
+  useEffect(() => {
+    if (loggedInUser && loggedInUser.role === 'teacher' && currentView === 'landing') {
+      setCurrentView('dashboard');
+    }
+  }, [loggedInUser, currentView]);
+  
   const handleOpenAuth = (tab: 'login' | 'signup') => {
     setAuthTab(tab);
     setAuthOpen(true);
@@ -121,7 +131,8 @@ export default function App() {
     if (user.country) {
       setSelectedCountry(user.country);
     }
-    setCurrentView('dashboard');
+    // Specific: Students land on platform home, staff land on dashboard
+    setCurrentView(user.role === 'student' ? 'landing' : 'dashboard');
   };
 
   const handleLogout = () => {
@@ -193,7 +204,50 @@ export default function App() {
   };
 
   const getTeachersList = (): Teacher[] => {
-    return lang === 'ar' ? teachersData.ar : teachersData.en;
+    const staticList = lang === 'ar' ? teachersData.ar : teachersData.en;
+    try {
+      const dbUsers = getAllUsers();
+      const dbTeachers = dbUsers.filter(u => u.role === 'teacher');
+      
+      const dynamicTeachers: Teacher[] = dbTeachers.map(u => {
+        const hasSpecialty = !!u.specialty?.trim();
+        return {
+          id: u.phone,
+          name: u.name,
+          title: hasSpecialty ? u.specialty : '',
+          specialty: hasSpecialty ? u.specialty : '',
+          bio: u.specialty ? u.specialty.trim() : '',
+          coursesCount: 0,
+          rating: 5.0,
+          avatar: u.gender === 'female' ? '👩‍🏫' : '👨‍🏫',
+          studentsCount: 150,
+          subject: u.subject || u.specialty,
+          subjects: u.subjects || (u.subject ? [u.subject] : u.specialty ? [u.specialty] : []),
+          grades: u.grades || ['1', '2', '3'],
+          curriculumAr: u.curriculum || (lang === 'ar' ? 'المنهج المعتمد' : 'Certified Curriculum'),
+          curriculumEn: u.curriculum || (lang === 'ar' ? 'المنهج المعتمد' : 'Certified Curriculum'),
+          country: u.country,
+          supportPhones: u.supportPhones || [],
+          nationality: u.nationality || '',
+          curriculum: u.curriculum || '',
+          cardImage: u.cardImage || '',
+          pageImage: u.pageImage || '',
+          socialLinks: u.socialLinks || {
+            facebook: { url: '', isVisible: false },
+            youtube: { url: '', isVisible: false },
+            tiktok: { url: '', isVisible: false },
+            whatsapp: { url: '', isVisible: false },
+            telegram: { url: '', isVisible: false }
+          }
+        };
+      });
+
+      const filteredStatic = staticList.filter(st => !dbTeachers.some(dt => dt.name.trim() === st.name.trim() || dt.phone === st.id));
+      return [...filteredStatic, ...dynamicTeachers];
+    } catch (e) {
+      console.error("Error loading merged teachers list", e);
+      return staticList;
+    }
   };
 
   const allCourses = getCoursesList();
@@ -204,9 +258,9 @@ export default function App() {
 
   if (loggedInUser) {
     if (loggedInUser.role === 'student') {
-      const userCountry = loggedInUser.country || 'EG';
-      filteredTeachers = allTeachers.filter(t => t.country === userCountry || t.country === 'both');
-      filteredCourses = allCourses.filter(c => c.country === userCountry || c.country === 'both');
+      const studentCountry = loggedInUser.country || 'EG';
+      filteredTeachers = allTeachers.filter(t => t.country === 'both' || t.country === studentCountry);
+      filteredCourses = allCourses.filter(c => c.country === 'both' || c.country === studentCountry);
     } else if (loggedInUser.role === 'teacher') {
       const teacherName = loggedInUser.name;
       filteredTeachers = allTeachers.filter(t => t.name.includes(teacherName) || teacherName.includes(t.name));
@@ -227,6 +281,8 @@ export default function App() {
       }`}
       dir={lang === 'ar' ? 'rtl' : 'ltr'}
     >
+      <RamadanTheme />
+      
       {/* Premium Navigation Header */}
       <Header
         currentLang={lang}
@@ -260,6 +316,7 @@ export default function App() {
                 teacher={currentTeacher}
                 courses={filteredCourses as any}
                 lang={lang}
+                purchasedCourseIds={purchasedCourseIds}
                 onBack={() => {
                   setSelectedTeacherId(null);
                   window.scrollTo({ top: 0, behavior: 'instant' });
@@ -302,6 +359,8 @@ export default function App() {
               onLogout={handleLogout}
               darkMode={darkMode}
               setDarkMode={setDarkMode}
+              purchasedCourseIds={purchasedCourseIds}
+              setPurchasedCourseIds={setPurchasedCourseIds}
             />
           ) : (
             <AdminDashboard
@@ -330,6 +389,7 @@ export default function App() {
               teachers={filteredTeachers}
               lang={lang}
               onSelectTeacher={(teacherId) => setSelectedTeacherId(teacherId)}
+              hideFilters={loggedInUser?.role === 'student'}
             />
 
             {/* Suggested Courses Section: Top 3 Courses below Teachers list */}
@@ -344,6 +404,7 @@ export default function App() {
               onSubscribeClick={handleSubscribeCourseClick}
               onViewCourseClick={handleViewCourseClick}
               purchasedCourseIds={purchasedCourseIds}
+              hideFilters={loggedInUser?.role === 'student'}
             />
 
             {/* Features Platform Advantages Section */}
@@ -401,6 +462,8 @@ export default function App() {
         initialTab={authTab}
         onLoginSuccess={handleLoginSuccess}
       />
+
+      <SmartInstallPrompt lang={lang} loggedInUser={loggedInUser} />
 
     </div>
   );

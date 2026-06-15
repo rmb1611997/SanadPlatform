@@ -16,14 +16,16 @@ interface TeacherProfilePageProps {
   lang: 'ar' | 'en';
   onBack: () => void;
   onGetStarted: () => void;
+  purchasedCourseIds?: string[];
 }
 
-export default function TeacherProfilePage({ teacher, courses, lang, onBack, onGetStarted }: TeacherProfilePageProps) {
+export default function TeacherProfilePage({ teacher, courses, lang, onBack, onGetStarted, purchasedCourseIds = [] }: TeacherProfilePageProps) {
   const [activeCourseDetails, setActiveCourseDetails] = useState<Course | null>(null);
   const [enrollSuccess, setEnrollSuccess] = useState(false);
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [previewVideoItem, setPreviewVideoItem] = useState<any | null>(null);
   const [lockAlert, setLockAlert] = useState<string | null>(null);
+  const [showCardLightbox, setShowCardLightbox] = useState(false);
 
   const t = translations[lang];
 
@@ -55,52 +57,234 @@ export default function TeacherProfilePage({ teacher, courses, lang, onBack, onG
     }, 2000);
   };
 
+  const getSubjectLabel = (sub?: string) => {
+    if (!sub) return '';
+    const subLower = sub.toLowerCase();
+    if (lang === 'ar') {
+      if (subLower === 'physics') return 'الفيزياء';
+      if (subLower === 'math') return 'الرياضيات';
+      if (subLower === 'chemistry') return 'الكيمياء';
+      if (subLower === 'biology') return 'علم الأحياء';
+      // If it contains "خبير مادة", let's clean it up or just show the clean subject
+      let cleaned = sub.replace(/خبير مادة\s*/, '').replace(/خبير\s*/, '').trim();
+      return cleaned || sub;
+    } else {
+      if (subLower === 'physics') return 'Physics';
+      if (subLower === 'math') return 'Mathematics';
+      if (subLower === 'chemistry') return 'Chemistry';
+      if (subLower === 'biology') return 'Biology';
+      let cleaned = sub.replace(/Physics Senior Faculty Specialist\s*/i, 'Physics').replace(/Expert\s*/i, '').trim();
+      return cleaned || sub;
+    }
+  };
+
   return (
     <div 
       dir={lang === 'ar' ? 'rtl' : 'ltr'} 
-      className="min-h-screen bg-neutral-50 dark:bg-neutral-900 transition-colors py-12"
+      className="min-h-screen bg-neutral-50 dark:bg-neutral-900 transition-colors pb-24 relative"
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      {/* Lightbox for Teacher card image */}
+      {showCardLightbox && teacher.cardImage && (
+        <div className="fixed inset-0 bg-black/90 z-[300] flex items-center justify-center p-4">
+          <div className="absolute right-4 top-4">
+            <button 
+              onClick={() => setShowCardLightbox(false)}
+              className="p-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-full transition-all cursor-pointer font-black"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="max-w-4xl max-h-screen overflow-hidden rounded-2xl shadow-2xl">
+            <img src={teacher.cardImage} className="max-w-full max-h-[90vh] object-contain rounded-2xl" alt="Teacher Card" />
+          </div>
+        </div>
+      )}
+
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8 relative z-10">
+        
+        {/* Clean Header Back Link */}
+        <div className="flex justify-between items-center mb-6">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-neutral-850 text-neutral-800 dark:text-neutral-100 hover:scale-105 rounded-full transition shadow-md text-xs font-black cursor-pointer duration-150 border border-neutral-150 dark:border-neutral-750"
+          >
+            {lang === 'ar' ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
+            <span>{lang === 'ar' ? 'رجوع للخلف' : 'Back'}</span>
+          </button>
+        </div>
         
         {/* Master Teacher Profile Header Card */}
-        <div className="relative overflow-hidden bg-white dark:bg-neutral-850 rounded-3xl border border-neutral-150/80 dark:border-neutral-800 shadow-xl p-6 md:p-10 mb-12">
+        <div className="relative overflow-hidden bg-white dark:bg-neutral-850 rounded-4xl border border-neutral-150/85 dark:border-neutral-800 shadow-2xl p-6 md:p-10 mb-12">
           {/* Subtle Abstract Background Glows */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
 
           <div className="flex flex-col lg:flex-row items-center lg:items-start gap-10 relative z-10">
-            {/* Teacher Image Avatar Frame - SPECTACULARLY LARGE */}
-            <div className="relative shrink-0 select-none group">
-              <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 rounded-[64px] blur-lg opacity-70 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
-              <div className="relative h-80 w-80 md:h-[400px] md:w-[400px] rounded-[60px] overflow-hidden bg-white dark:bg-neutral-900 border-4 border-white/50 dark:border-neutral-800 flex items-center justify-center shadow-2xl transform group-hover:scale-[1.02] transition-transform duration-500">
-                {teacher.avatar && teacher.avatar.length <= 4 ? (
-                  <span className="text-[200px] md:text-[280px] select-none leading-none pt-4" role="img" aria-label={teacher.name}>
-                    {teacher.avatar}
-                  </span>
-                ) : (
-                  <img 
-                    src={teacher.avatar} 
-                    alt={teacher.name} 
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover" 
-                  />
-                )}
+            {/* Teacher Image Avatar Column & Cover Frame (يمين الصفحة) */}
+            <div className="shrink-0 flex flex-col items-center gap-5">
+              <div className="relative select-none group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 via-purple-500 to-cyan-500 rounded-[64px] blur-lg opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-pulse"></div>
+                <div className="relative h-64 w-64 md:h-80 md:w-80 rounded-[55px] overflow-hidden bg-white dark:bg-neutral-900 border-4 border-white dark:border-neutral-850 flex items-center justify-center shadow-2xl transform group-hover:scale-[1.03] transition-transform duration-500">
+                  {teacher.pageImage ? (
+                    <img 
+                      src={teacher.pageImage} 
+                      alt={teacher.name} 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : teacher.avatar && teacher.avatar.length <= 4 ? (
+                    <span className="text-[140px] md:text-[190px] select-none leading-none pt-4" role="img" aria-label={teacher.name}>
+                      {teacher.avatar}
+                    </span>
+                  ) : (
+                    <img 
+                      src={teacher.avatar} 
+                      alt={teacher.name} 
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover" 
+                    />
+                  )}
+                </div>
               </div>
             </div>
 
             {/* Teacher Details */}
-            <div className="flex-1 text-center lg:text-right space-y-6 pt-4 lg:pt-10">
+            <div className="flex-1 text-center lg:text-right space-y-6 pt-4 lg:pt-6">
               <div className="space-y-4">
-                <h1 className="text-4xl md:text-6xl font-black text-neutral-900 dark:text-white mt-1 leading-tight">
-                  {teacher.name}
-                </h1>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2">
+                    {teacher.subjects && teacher.subjects.length > 0 ? (
+                      teacher.subjects.map((sub, i) => (
+                        <span key={i} className="text-xs font-black uppercase bg-indigo-500/10 text-indigo-650 dark:text-indigo-400 px-3 py-1 rounded-xl">
+                          📚 {getSubjectLabel(sub)}
+                        </span>
+                      ))
+                    ) : (teacher.subject || teacher.specialty) ? (
+                      <span className="text-xs font-black uppercase bg-indigo-500/10 text-indigo-650 dark:text-indigo-400 px-3 py-1 rounded-xl">
+                        📚 {getSubjectLabel(teacher.subject || teacher.specialty)}
+                      </span>
+                    ) : null}
+                    {teacher.curriculum && (
+                      <span className="text-xs font-black uppercase bg-emerald-500/10 text-emerald-650 dark:text-emerald-450 px-3 py-1 rounded-xl">
+                        📖 {lang === 'ar' ? `${teacher.curriculum}` : `Curriculum: ${teacher.curriculum}`}
+                      </span>
+                    )}
+                  </div>
+
+                  <h1 className="text-3xl md:text-5xl font-black text-neutral-900 dark:text-white leading-tight">
+                    {teacher.name}
+                  </h1>
+
+                  {teacher.bio && (
+                    <p className="text-sm md:text-base text-neutral-500 dark:text-neutral-400 font-extrabold max-w-2xl leading-relaxed">
+                      {teacher.bio}
+                    </p>
+                  )}
+                </div>
+
                 
+                {/* Support Phones displays */}
+                {teacher.supportPhones && teacher.supportPhones.length > 0 && (
+                  <div className="space-y-2 pt-2 text-right">
+                    <span className="text-[10px] font-black uppercase text-neutral-400 tracking-wider block">
+                      {lang === 'ar' ? 'الدعم الفني الخاص بالمدرس' : 'WhatsApp Support Desk & Student Care:'}
+                    </span>
+                    <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
+                      {teacher.supportPhones.map((ph, idx) => (
+                        <a 
+                          key={idx}
+                          href={`https://wa.me/${ph}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-150 dark:border-emerald-950 text-emerald-700 dark:text-emerald-450 text-xs font-black rounded-xl hover:bg-emerald-100 transition-all cursor-pointer shadow-sm"
+                        >
+                          <svg className="h-4 w-4 fill-current shrink-0" viewBox="0 0 24 24">
+                            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.458L0 24zm6.59-4.846c1.6.95 3.197 1.451 4.885 1.452 5.482 0 9.945-4.463 9.948-9.949.002-2.66-1.033-5.159-2.908-7.037-1.875-1.877-4.373-2.907-7.031-2.908-5.485 0-9.948 4.464-9.951 9.95-.001 1.796.5 3.51 1.45 4.968L1.921 22.09l4.726-1.24c-1.49-.91-2.28-.47-2.28-.47z" />
+                          </svg>
+                          <span>{ph} ({lang === 'ar' ? 'اضغط للمحادثة' : 'WhatsApp Support'})</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Social links dynamic visibility display */}
+                {teacher.socialLinks && Object.values(teacher.socialLinks).some((link: any) => link && link.url && link.isVisible) && (
+                  <div className="space-y-3 pt-2">
+                    <span className="text-xs font-black uppercase text-neutral-400 dark:text-neutral-500 tracking-wider block">
+                      {lang === 'ar' ? 'روابط التواصل الاجتماعي الرسمية للمدرس:' : 'Official Faculty Social Channels:'}
+                    </span>
+                    <div className="flex flex-wrap gap-3 justify-center lg:justify-start">
+                      {teacher.socialLinks.facebook && teacher.socialLinks.facebook.isVisible && teacher.socialLinks.facebook.url && (
+                        <a 
+                          href={teacher.socialLinks.facebook.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-11 px-4 gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black shadow-md shadow-blue-500/10 hover:shadow-blue-500/20 transition-all duration-200 transform hover:-translate-y-0.5 active:scale-95"
+                          title="Facebook"
+                        >
+                          <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24"><path d="M22 12c0-5.52-4.48-10-10-10S2 6.48 2 12c0 4.84 3.44 8.87 8 9.8V15H8v-3h2V9.5C10 7.57 11.57 6 13.5 6H16v3h-2c-.55 0-1 .45-1 1v2h3v3h-3v6.95c4.56-.93 8-4.96 8-9.75z"/></svg>
+                          <span>{lang === 'ar' ? 'فيسبوك' : 'Facebook'}</span>
+                        </a>
+                      )}
+                      {teacher.socialLinks.youtube && teacher.socialLinks.youtube.isVisible && teacher.socialLinks.youtube.url && (
+                        <a 
+                          href={teacher.socialLinks.youtube.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-11 px-4 gap-2 bg-red-650 hover:bg-red-750 text-white rounded-2xl text-xs font-black shadow-md shadow-red-500/10 hover:shadow-red-500/20 transition-all duration-200 transform hover:-translate-y-0.5 active:scale-95"
+                          title="YouTube"
+                        >
+                          <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24"><path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.517 3.545 12 3.545 12 3.545s-7.517 0-9.388.508a3.003 3.003 0 0 0-2.11 2.11C0 8.033 0 12 0 12s0 3.967.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.871.508 9.388.508 9.388.508s7.517 0 9.388-.508a3.003 3.003 0 0 0 2.11-2.11C24 15.967 24 12 24 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                          <span>{lang === 'ar' ? 'يوتيوب' : 'YouTube'}</span>
+                        </a>
+                      )}
+                      {teacher.socialLinks.tiktok && teacher.socialLinks.tiktok.isVisible && teacher.socialLinks.tiktok.url && (
+                        <a 
+                          href={teacher.socialLinks.tiktok.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-11 px-4 gap-2 bg-neutral-900 border border-neutral-800 hover:bg-black text-white rounded-2xl text-xs font-black shadow-md transition-all duration-200 transform hover:-translate-y-0.5 active:scale-95"
+                          title="TikTok"
+                        >
+                          <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.01 1.61 4.18 1.15 1.25 2.76 1.93 4.41 2.02v3.74c-1.74-.11-3.41-.71-4.79-1.78-.29-.22-.55-.47-.8-.74v7.35c.01 1.76-.46 3.53-1.42 4.96-1.72 2.45-4.66 3.82-7.65 3.39-3.23-.41-5.88-2.85-6.52-6.05-.72-3.72 1.34-7.53 4.91-8.72 1.05-.33 2.17-.41 3.26-.22v3.83c-.85-.24-1.77-.16-2.56.28-.96.53-1.57 1.55-1.55 2.66-.02 1.94 1.71 3.47 3.65 3.25 1.54-.11 2.73-1.4 2.78-2.95V.02z"/></svg>
+                          <span>{lang === 'ar' ? 'تيك توك' : 'TikTok'}</span>
+                        </a>
+                      )}
+                      {teacher.socialLinks.whatsapp && teacher.socialLinks.whatsapp.isVisible && teacher.socialLinks.whatsapp.url && (
+                        <a 
+                          href={teacher.socialLinks.whatsapp.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-11 px-4 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20 transition-all duration-200 transform hover:-translate-y-0.5 active:scale-95"
+                          title="WhatsApp"
+                        >
+                          <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24"><path d="M12.004 2C6.48 2 2 6.48 2 12c0 2.18.7 4.2 1.89 5.85L2.1 21.9l4.17-1.1c1.58.87 3.38 1.36 5.3 1.36 5.52 0 10-4.48 10-10S17.524 2 12.004 2zm5.72 13.91c-.24.68-1.2 1.24-1.65 1.29-.45.05-.9.1-2.93-.72-2.03-.82-3.33-2.91-3.43-3.05-.1-.14-.82-1.11-.82-2.11s.52-1.49.71-1.69c.19-.2.42-.25.56-.25.14 0 .28 0 .4.01.12.01.28-.05.44.33.16.38.56 1.37.61 1.47.05.1.1.22.03.36-.07.14-.14.23-.23.33-.09.1-.2.23-.29.33-.11.11-.22.24-.09.46.13.22.58.95 1.24 1.54.85.76 1.56 1 1.78 1.1s.41-.01.56-.16c.15-.15.66-.77.83-1.03.18-.26.35-.22.59-.13.24.09 1.53.72 1.79.85.26.13.43.19.49.3.06.11.06.63-.18 1.31z"/></svg>
+                          <span>{lang === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
+                        </a>
+                      )}
+                      {teacher.socialLinks.telegram && teacher.socialLinks.telegram.isVisible && teacher.socialLinks.telegram.url && (
+                        <a 
+                          href={teacher.socialLinks.telegram.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center h-11 px-4 gap-2 bg-sky-505 hover:bg-sky-600 text-white rounded-2xl text-xs font-black shadow-md shadow-sky-500/10 hover:shadow-sky-500/20 transition-all duration-200 transform hover:-translate-y-0.5 active:scale-95"
+                          title="Telegram"
+                        >
+                          <svg className="h-5 w-5 fill-current" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.78-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .33z"/></svg>
+                          <span>{lang === 'ar' ? 'تليجرام' : 'Telegram'}</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Multiple Academic Grades (الصفوف الدراسية) list display */}
-                <div className="pt-4">
+                <div className="pt-4 border-t pt-4 border-neutral-100 dark:border-neutral-800">
                   <span className="text-sm font-black uppercase text-neutral-450 dark:text-neutral-500 block mb-3">
                     {lang === 'ar' ? 'الصفوف الدراسية المعتمدة للمعلّم:' : 'Accredited Class Grades for Students:'}
                   </span>
-                  <div className="flex flex-col gap-2 items-center lg:items-start">
+                  <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
                     {((teacher as any).grades || ['1', '2', '3']).map((g: string) => {
                       const getGradeFullLabel = (gradeKey: string) => {
                         if (lang === 'ar') {
@@ -118,7 +302,7 @@ export default function TeacherProfilePage({ teacher, courses, lang, onBack, onG
                       return (
                         <span 
                           key={g} 
-                          className="text-sm md:text-base font-black px-5 py-2.5 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-neutral-800 dark:text-neutral-250 rounded-2xl transition border border-neutral-200/60 dark:border-neutral-800/80 shadow-sm"
+                          className="text-xs md:text-sm font-black px-4 py-2 bg-indigo-50/60 dark:bg-indigo-950/20 hover:bg-indigo-100 dark:hover:bg-indigo-950/40 text-neutral-800 dark:text-neutral-250 rounded-2xl transition border border-neutral-200/60 dark:border-neutral-800/80 shadow-xs"
                         >
                           🎓 {getGradeFullLabel(g)}
                         </span>
@@ -155,6 +339,7 @@ export default function TeacherProfilePage({ teacher, courses, lang, onBack, onG
                     course={course} 
                     isAr={lang === 'ar'} 
                     role="student" 
+                    isSubscribed={purchasedCourseIds.includes(course.id)}
                     onActionClick={() => setActiveCourseDetails(course)} 
                   />
                 </motion.div>
@@ -242,6 +427,14 @@ export default function TeacherProfilePage({ teacher, courses, lang, onBack, onG
                         {activeCourseDetails.title}
                       </h3>
 
+                      {purchasedCourseIds.includes(activeCourseDetails.id) && (
+                        <div className="mt-2 flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl w-max">
+                          <span className="text-emerald-600 dark:text-emerald-400 text-xs font-black">
+                            ✅ {lang === 'ar' ? 'أنت مشترك في هذا الكورس' : 'You are enrolled in this course'}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Tutor info */}
                       <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-neutral-900/50 rounded-xl">
                         <span className="text-3xl flex items-center justify-center">
@@ -319,12 +512,14 @@ export default function TeacherProfilePage({ teacher, courses, lang, onBack, onG
                               </span>
                             )}
                           </div>
-                          <button
-                            onClick={handleEnrollMock}
-                            className="bg-indigo-600 hover:bg-indigo-750 text-white text-xs font-extrabold px-4 py-2 rounded-xl transition"
-                          >
-                            💳 {lang === 'ar' ? 'الاشتراك في الكورس' : 'Subscribe Now'}
-                          </button>
+                          {!purchasedCourseIds.includes(activeCourseDetails.id) && (
+                            <button
+                              onClick={handleEnrollMock}
+                              className="bg-indigo-600 hover:bg-indigo-750 text-white text-xs font-extrabold px-4 py-2 rounded-xl transition"
+                            >
+                              💳 {lang === 'ar' ? 'الاشتراك في الكورس' : 'Subscribe Now'}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

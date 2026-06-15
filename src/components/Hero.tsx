@@ -30,7 +30,7 @@ export default function Hero({
       <div className="absolute top-1/3 -end-24 -z-10 h-80 w-80 rounded-full bg-blue-400/10 blur-3xl dark:bg-blue-500/5" />
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 lg:gap-12 items-center">
           
           {/* Text content area */}
           <div className="lg:col-span-7 text-center lg:text-start space-y-6">
@@ -161,38 +161,39 @@ export default function Hero({
 
           </div>
           {/* Right graphics area */}
-          <div className="lg:col-span-5 relative flex justify-center mt-12 lg:mt-0 lg:-translate-y-12">
+          <div className="lg:col-span-5 relative flex justify-center mt-12 md:mt-16 lg:mt-0 transition-all duration-500">
             <motion.div
-              initial={{ opacity: 0, scale: 0.8, y: 30 }}
+              initial={{ opacity: 0, scale: 0.8, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.8, type: "spring" }}
-              className="relative z-10 group"
+              className="relative z-10 group lg:-translate-y-[20px]"
             >
-    {/* Animated Glow Background */}
-    <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/30 via-blue-500/20 to-cyan-400/20 rounded-3xl blur-3xl animate-pulse" />
+              {/* Animated Glow Background */}
+              <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/30 via-blue-500/20 to-cyan-400/20 rounded-3xl blur-3xl animate-pulse animate-duration-[3000ms]" />
 
-    {/* Floating Glow Ring */}
-    <div className="absolute -inset-6 bg-gradient-to-r from-indigo-500/20 to-blue-500/20 rounded-3xl blur-2xl animate-pulse" />
+              {/* Floating Glow Ring */}
+              <div className="absolute -inset-6 bg-gradient-to-r from-indigo-500/20 to-blue-500/20 rounded-3xl blur-2xl animate-pulse animate-duration-[4000ms]" />
 
-    {/* Image */}
-    <img
-      src={heroImg}
-      alt="Educational Sanad Landscape"
-      referrerPolicy="no-referrer"
-      className="
-        relative z-10
-        w-[400px] max-w-full
-        rounded-2xl
-        object-cover
-        transition-all duration-700
-        group-hover:scale-105
-        group-hover:rotate-[1deg]
-        drop-shadow-2xl
-        dark:brightness-0 dark:invert
-      "
-    />
-  </motion.div>
-</div>
+              {/* Image */}
+              <img
+                src={heroImg}
+                alt="Educational Sanad Landscape"
+                referrerPolicy="no-referrer"
+                className="
+                  relative z-10
+                  w-[280px] sm:w-[350px] md:w-[400px] max-w-full
+                  rounded-3xl
+                  object-contain
+                  transition-all duration-700
+                  lg:group-hover:scale-105
+                  lg:group-hover:rotate-[1deg]
+                  lg:group-hover:-translate-y-2
+                  drop-shadow-2xl
+                  dark:brightness-0 dark:invert
+                "
+              />
+            </motion.div>
+          </div>
 
         </div>
       </div>

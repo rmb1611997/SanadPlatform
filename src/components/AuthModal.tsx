@@ -6,7 +6,12 @@ import {
 } from 'lucide-react';
 import { translations } from '../data';
 import { hashPassword } from '../utils/crypto';
-import { registerStudent, getAllUsers, addSecurityLog, seedDatabaseIfNeeded } from '../utils/db';
+import { 
+  registerStudent, getAllUsers, addSecurityLog, seedDatabaseIfNeeded,
+  initiatePasswordReset, completePasswordReset, canChangePassword, verifyResetIdentity,
+  updateUserByAdmin 
+} from '../utils/db';
+import { getDeviceId } from '../utils/device';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -50,7 +55,7 @@ const saudiRegions = [
 ];
 
 export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login', onLoginSuccess }: AuthModalProps) {
-  const [activeTab, setActiveTab] = useState<'login' | 'signup'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'login' | 'signup' | 'forgot' | 'reset'>(initialTab);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -60,6 +65,7 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
   // Form Fields
   const [fullName, setFullName] = useState('');
   const [studentPhone, setStudentPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [parentPhone, setParentPhone] = useState('');
   const [location, setLocation] = useState('');
   const [gender, setGender] = useState<'male' | 'female'>('male');
@@ -67,6 +73,16 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
   const [grade, setGrade] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Recovery States
+  const [recoveryPhone, setRecoveryPhone] = useState('');
+  const [recoveryParentPhone, setRecoveryParentPhone] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [isProcessingReset, setIsProcessingReset] = useState(false);
+  const [recoverySuccess, setRecoverySuccess] = useState(false);
 
   // Login inputs
   const [loginPhone, setLoginPhone] = useState('');
@@ -147,6 +163,12 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
       return;
     }
 
+    const emailRegex = /^[^\s@]+@gmail\.com$/;
+    if (!email.trim() || !emailRegex.test(email.toLowerCase())) {
+      setError(lang === 'ar' ? 'يرجى إدخال بريد إلكتروني ينتهي بـ @gmail.com فقط' : 'Please enter a valid @gmail.com address only');
+      return;
+    }
+
     // Parent Phone Validation
     if (!parentPhone.trim() || !phoneRegex.test(parentPhone) || parentPhone.length !== targetLength) {
       setError(
@@ -180,6 +202,7 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
     const res = await registerStudent({
       name: fullName.trim(),
       phone: studentPhone,
+      email: email.trim(),
       parentPhone: parentPhone,
       country: selectedCountry,
       location: location,
@@ -200,6 +223,9 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
     setLoggedInUserMeta({ name: fullName.trim(), role: 'student' });
     setSuccess(true);
     addSecurityLog({ phone: studentPhone, event: 'login_success', role: 'student' });
+    setRecoveryPhone(''); // Reset recovery fields
+    setRecoveryParentPhone('');
+    setRecoveryEmail('');
 
     setTimeout(() => {
       onLoginSuccess({
@@ -272,6 +298,27 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
       return;
     }
 
+    // MULTI-LOGIN PROTECTION: Check device authorization for students
+    if (found.role === 'student') {
+      const currentId = getDeviceId();
+      const existingDevices = found.authorizedDevices || [];
+      
+      // If NOT already authorized, check limit
+      if (!existingDevices.includes(currentId)) {
+        if (existingDevices.length >= 3) {
+          setError(lang === 'ar' 
+            ? '🚨 عذراً، لقد تجاوزت الحد الأقصى لعدد الأجهزة المستخدمة (3 أجهزة)! يرجى التواصل مع الدعم الفني لإدارة أجهزتك.'
+            : '🚨 Device limit reached! You are limited to 3 devices. Please contact support to manage devices.'
+          );
+          addSecurityLog({ phone: found.phone, event: 'login_failed', role: found.role, ip: 'DEVICE_LIMIT_REACHED' });
+          return;
+        }
+
+        // Add device
+        updateUserByAdmin(found.phone, { authorizedDevices: [...existingDevices, currentId] });
+      }
+    }
+
     // Success login!
     setConsecutiveFailures(0);
     setIsBlocked(false);
@@ -325,6 +372,57 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
       setLoginPhone('01010101010');
       setLoginPassword('admin');
     }
+  };
+
+  const handleInitiateRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    
+    const res = await initiatePasswordReset(recoveryPhone, recoveryParentPhone, recoveryEmail);
+    if (!res.success) {
+      setError(res.error || 'Recovery initiation failed');
+      return;
+    }
+
+    // SIMULATION: In a real system, we wait for email. 
+    setRecoverySuccess(true);
+    setTimeout(() => {
+      setRecoverySuccess(false);
+      setActiveTab('reset');
+      setResetToken(res.token!); // Pre-fill token for demo ease
+    }, 4000);
+  };
+
+  const handleCompleteReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+
+    if (newPassword.length < 6) {
+      setError(lang === 'ar' ? 'كلمة المرور يجب ألا تقل عن 6 أحرف' : 'Password must be 6+ characters');
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setError(lang === 'ar' ? 'كلمات المرور غير متطابقة' : 'Passwords do not match');
+      return;
+    }
+
+    setIsProcessingReset(true);
+    const res = await completePasswordReset(resetToken, newPassword);
+    setIsProcessingReset(false);
+
+    if (!res.success) {
+      setError(res.error || 'Reset failed');
+      return;
+    }
+
+    setSuccess(true);
+    setTimeout(() => {
+      setSuccess(false);
+      setActiveTab('login');
+      setLoginPhone(recoveryPhone);
+      setError('');
+    }, 2000);
   };
 
   return (
@@ -465,6 +563,21 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
                           placeholder="مثال: يوسف فهد سليمان العتيبي"
+                          className="w-full text-xs rounded-xl border border-neutral-200 bg-neutral-50 dark:bg-neutral-900/50 dark:border-neutral-700 px-4 py-2outline-none focus:border-indigo-500 transition py-2.5"
+                        />
+                      </div>
+
+                      {/* Email input */}
+                      <div>
+                        <label className="block text-xs font-bold text-neutral-500 dark:text-neutral-400 mb-1">
+                          {lang === 'ar' ? 'البريد الإلكتروني (إلزامي)' : 'Email Address (Mandatory)'}
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          placeholder={lang === 'ar' ? 'example@mail.com' : 'example@mail.com'}
                           className="w-full text-xs rounded-xl border border-neutral-200 bg-neutral-50 dark:bg-neutral-900/50 dark:border-neutral-700 px-4 py-2outline-none focus:border-indigo-500 transition py-2.5"
                         />
                       </div>
@@ -610,6 +723,205 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
                 </div>
               )}
 
+              {activeTab === 'forgot' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {recoverySuccess ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center animate-in zoom-in duration-300">
+                      <div className="mb-4 rounded-full bg-emerald-50 dark:bg-emerald-950/40 p-4 text-emerald-500 dark:text-emerald-400">
+                        <CheckCircle className="h-12 w-12" />
+                      </div>
+                      <h3 className="text-xl font-extrabold text-neutral-800 dark:text-neutral-100">
+                        {lang === 'ar' ? '📩 تم التحقق وإرسال الرابط!' : '📩 Verified & Link Sent!'}
+                      </h3>
+                      <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed font-semibold">
+                        {lang === 'ar' 
+                          ? `قمنا بإرسال رابط إعادة تعيين كلمة المرور إلى بريدك: ${recoveryEmail}` 
+                          : `We've sent the secure password reset link to your email: ${recoveryEmail}`}
+                      </p>
+                      <p className="mt-2 text-xs text-indigo-500 font-bold italic animate-pulse">
+                        {lang === 'ar' ? 'يرجى مراجعة بريدك الإلكتروني والضغط على الرابط للمتابعة...' : 'Please check your inbox and click the link to proceed...'}
+                      </p>
+                      <p className="mt-6 text-[10px] text-neutral-400">
+                        {lang === 'ar' ? '(سيتم الآن تحويلك لصفحة تغيير الرقم السري تلقائياً للمحاكاة)' : '(Redirecting you to the simulation reset page now)'}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-center space-y-2">
+                    <div className="h-12 w-12 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                      <Key className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-black text-neutral-800 dark:text-white">
+                      {lang === 'ar' ? 'استرجاع كلمة المرور' : 'Retrieve Password'}
+                    </h3>
+                    <p className="text-[10px] text-neutral-500 font-bold px-4 leading-relaxed">
+                      {lang === 'ar' 
+                        ? 'يرجى إدخال البيانات الثلاثة التالية للتحقق من هويتك وإرسال رابط إعادة التعيين.' 
+                        : 'Please enter the following 3 identifiers to verify your identity and receive a reset link.'}
+                    </p>
+                  </div>
+
+                  {success ? (
+                    <div className="p-6 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-800 text-center space-y-3">
+                      <ShieldCheck className="h-10 w-10 text-emerald-500 mx-auto" />
+                      <p className="text-sm font-black text-emerald-700 dark:text-emerald-400">
+                        {lang === 'ar' ? 'تم التحقق بنجاح!' : 'Identity Verified!'}
+                      </p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-500 font-bold">
+                        {lang === 'ar' ? 'جاري تحويلك لصفحة تعيين كلمة المرور الجديدة...' : 'Redirecting you to set a new password...'}
+                      </p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleInitiateRecovery} className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-1">
+                          {lang === 'ar' ? 'رقم هاتف الطالب' : 'Student Phone'}
+                        </label>
+                        <div className="relative">
+                          <Phone className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                          <input
+                            type="tel"
+                            required
+                            value={recoveryPhone}
+                            onChange={(e) => setRecoveryPhone(e.target.value)}
+                            placeholder="01xxxxxxxxx"
+                            className="w-full pl-11 pr-4 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-1">
+                          {lang === 'ar' ? 'رقم ولي الأمر' : 'Parent Phone'}
+                        </label>
+                        <div className="relative">
+                          <Users className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                          <input
+                            type="tel"
+                            required
+                            value={recoveryParentPhone}
+                            onChange={(e) => setRecoveryParentPhone(e.target.value)}
+                            placeholder="01xxxxxxxxx"
+                            className="w-full pl-11 pr-4 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-1">
+                          {lang === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}
+                        </label>
+                        <div className="relative">
+                          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400" />
+                          <input
+                            type="email"
+                            required
+                            value={recoveryEmail}
+                            onChange={(e) => setRecoveryEmail(e.target.value)}
+                            placeholder="example@gmail.com"
+                            className="w-full pl-11 pr-4 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-xl transition shadow-lg shadow-indigo-500/20"
+                      >
+                        {lang === 'ar' ? 'تحقق واستمرار ➔' : 'Verify & Continue ➔'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('login')}
+                        className="w-full py-2 text-xs font-black text-neutral-400 hover:text-neutral-600 transition"
+                      >
+                        {lang === 'ar' ? 'العودة لتسجيل الدخول' : 'Back to Login'}
+                      </button>
+                    </form>
+                  )}
+                </>)}
+                </div>
+              )}
+
+              {activeTab === 'reset' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <div className="text-center space-y-2">
+                    <div className="h-12 w-12 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                      <Lock className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-black text-neutral-800 dark:text-white">
+                      {lang === 'ar' ? 'تعيين كلمة مرور جديدة' : 'Set New Password'}
+                    </h3>
+                  </div>
+
+                  {success ? (
+                    <div className="p-8 text-center space-y-4">
+                      <div className="h-16 w-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                        <CheckCircle className="h-10 w-10" />
+                      </div>
+                      <p className="text-base font-black text-neutral-800 dark:text-white">
+                        {lang === 'ar' ? 'تم تحديث كلمة المرور بنجاح!' : 'Password Updated Successfully!'}
+                      </p>
+                      <p className="text-xs text-neutral-500 font-bold">
+                        {lang === 'ar' ? 'يمكنك الآن تسجيل الدخول باستخدام الرمز الجديد.' : 'You can now login with your new credentials.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleCompleteReset} className="space-y-6">
+                      <div className="p-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl">
+                        <label className="text-[9px] font-black text-neutral-400 uppercase mb-1 block">
+                          {lang === 'ar' ? 'رمز التحقق (رابط Reset)' : 'Reset Token'}
+                        </label>
+                        <input
+                          type="text"
+                          readOnly
+                          value={resetToken}
+                          className="w-full bg-transparent text-xs font-mono font-bold outline-none text-neutral-500"
+                        />
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-1">
+                            {lang === 'ar' ? 'كلمة المرور الجديدة' : 'New Password'}
+                          </label>
+                          <input
+                            type="password"
+                            required
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-neutral-400 uppercase tracking-widest pl-1">
+                            {lang === 'ar' ? 'تأكيد كلمة المرور' : 'Confirm Password'}
+                          </label>
+                          <input
+                            type="password"
+                            required
+                            value={confirmNewPassword}
+                            onChange={(e) => setConfirmNewPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isProcessingReset}
+                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-xl transition shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                      >
+                        {isProcessingReset ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ وتحديث الحساب 🔐' : 'Save & Update Account 🔐')}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
               {activeTab === 'login' && (
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div>
@@ -655,6 +967,13 @@ export default function AuthModal({ isOpen, onClose, lang, initialTab = 'login',
                         {lang === 'ar' ? 'تذكرني على هذا الجهاز' : 'Remember me'}
                       </span>
                     </label>
+                    <button 
+                      type="button"
+                      onClick={() => { setActiveTab('forgot'); setError(''); }}
+                      className="text-xs font-black text-indigo-600 hover:underline"
+                    >
+                      {lang === 'ar' ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
+                    </button>
                   </div>
 
                   <button

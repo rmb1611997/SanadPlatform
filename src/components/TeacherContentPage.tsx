@@ -5,6 +5,8 @@ import {
   Database, Image, ArrowUp, ArrowDown, Sparkles, Check, AlertCircle, Eye, Globe
 } from 'lucide-react';
 import { Course } from '../types';
+import { getAllUsers } from '../utils/db';
+import { SecureVideoPlayer } from './SecureVideoPlayer';
 
 interface TeacherContentPageProps {
   lang: 'ar' | 'en';
@@ -108,6 +110,26 @@ export default function TeacherContentPage({
   // Filter courses owned by this teacher
   const activeTeacherName = teacherCourses && teacherCourses.length > 0 ? teacherCourses[0].teacher : 'أ. أحمد سامي';
 
+  const getCurrentTeacherCurrency = (): 'EGP' | 'SAR' => {
+    try {
+      const users = getAllUsers();
+      const found = users.find(u => 
+        u.role === 'teacher' && 
+        (u.name.toLowerCase() === activeTeacherName.toLowerCase() || 
+         activeTeacherName.toLowerCase().includes(u.name.toLowerCase()) || 
+         u.name.toLowerCase().includes(activeTeacherName.toLowerCase()) ||
+         (u.phone && u.phone === localStorage.getItem('sanad_user_session_persistent')))
+      );
+      if (found && found.currency) {
+        return found.currency;
+      }
+      const defaults = getTeacherDefaults(activeTeacherName);
+      return defaults.country === 'SA' ? 'SAR' : 'EGP';
+    } catch {
+      return 'EGP';
+    }
+  };
+
   const getTeacherDefaults = (teacherName: string): { category: 'math' | 'physics' | 'chemistry' | 'languages' | 'biology'; country: 'EG' | 'SA'; teacher: string } => {
     const name = (teacherName || '').toLowerCase();
     if (name.includes('أحمد') || name.includes('saimi') || name.includes('سامي')) {
@@ -207,7 +229,7 @@ export default function TeacherContentPage({
   const [vidDescAr, setVidDescAr] = useState('');
   const [vidDescEn, setVidDescEn] = useState('');
   const [vidDuration, setVidDuration] = useState('٣٠ دقيقة');
-  const [vidSource, setVidSource] = useState<'youtube' | 'bunny'>('youtube');
+  const [vidSource, setVidSource] = useState<'youtube' | 'bunny' | 'vimeo'>('youtube');
   const [vidLink, setVidLink] = useState('');
   const [vidIsFree, setVidIsFree] = useState(true);
   const [vidPubTime, setVidPubTime] = useState('');
@@ -369,6 +391,7 @@ export default function TeacherContentPage({
     if (!courseTitle.trim()) return;
 
     const defaults = getTeacherDefaults(activeTeacherName);
+    const teacherCurr = getCurrentTeacherCurrency();
 
     const newCourse: Course = {
       id: 'c_' + Date.now(),
@@ -380,10 +403,10 @@ export default function TeacherContentPage({
       lessons: 0,
       duration: '—',
       price: Number(coursePrice) || 0,
-      currency: isAr ? 'جنيه / ريال' : 'EGP / SAR',
+      currency: teacherCurr,
       rating: 4.9,
       category: defaults.category,
-      country: defaults.country,
+      country: teacherCurr === 'SAR' ? 'SA' : 'EG',
       level: courseGrade || (isAr ? 'الصف الثالث الثانوي' : 'Grade 12'),
       isVisible: courseIsVisible,
     };
@@ -406,6 +429,8 @@ export default function TeacherContentPage({
     e.preventDefault();
     if (!selectedCourseToOp || !courseTitle.trim()) return;
 
+    const teacherCurr = getCurrentTeacherCurrency();
+
     setAllCourses(prev => prev.map(c => {
       if (c.id === selectedCourseToOp) {
         const defaults = getTeacherDefaults(c.teacher || activeTeacherName);
@@ -416,7 +441,8 @@ export default function TeacherContentPage({
           price: Number(coursePrice) || 0,
           discountPrice: courseDiscount ? Number(courseDiscount) : undefined,
           category: defaults.category,
-          country: defaults.country,
+          country: teacherCurr === 'SAR' ? 'SA' : 'EG',
+          currency: teacherCurr,
           teacherAvatar: c.teacherAvatar || '👨‍🏫',
           courseImage: courseImage,
           isVisible: courseIsVisible
@@ -606,8 +632,8 @@ export default function TeacherContentPage({
 
   const handleRedesignedSaveVideo = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!vidTitleAr.trim() || !vidCourseId || !vidModuleId) {
-      triggerSuccessMsg(isAr ? '⚠️ يرجى تحديد الكورس والمجموعة وإدخال عنوان للفيديو!' : '⚠️ Please select Course, Group and enter title!');
+    if (!vidTitleAr.trim() || !vidCourseId || !vidModuleId || !vidLink.trim()) {
+      triggerSuccessMsg(isAr ? '⚠️ يرجى تحديد الكورس والمجموعة وإدخال عنوان ورابط للفيديو!' : '⚠️ Please select Course, Group, enter title and Link!');
       return;
     }
 
@@ -1381,7 +1407,9 @@ export default function TeacherContentPage({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-black text-neutral-500">{isAr ? 'سعر الكورس الأساسي' : 'Base Price'}</label>
+                      <label className="text-[11px] font-black text-neutral-500">
+                        {isAr ? 'سعر الكورس الأساسي' : 'Base Price'} ({getCurrentTeacherCurrency() === 'EGP' ? (isAr ? 'جنيه مصري' : 'EGP') : (isAr ? 'ريال سعودي' : 'SAR')})
+                      </label>
                       <input
                         required
                         type="number"
@@ -1393,7 +1421,9 @@ export default function TeacherContentPage({
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-black text-neutral-500">{isAr ? 'الخصم (اختياري)' : 'Discount Price (Optional)'}</label>
+                      <label className="text-[11px] font-black text-neutral-500">
+                        {isAr ? 'الخصم (اختياري)' : 'Discount Price (Optional)'} ({getCurrentTeacherCurrency() === 'EGP' ? (isAr ? 'جنيه مصري' : 'EGP') : (isAr ? 'ريال سعودي' : 'SAR')})
+                      </label>
                       <input
                         type="number"
                         value={courseDiscount}
@@ -1640,7 +1670,9 @@ export default function TeacherContentPage({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
-                          <label className="text-[11px] font-black text-neutral-500">{isAr ? 'السعر الكلي' : 'Full price'}</label>
+                          <label className="text-[11px] font-black text-neutral-500">
+                            {isAr ? 'السعر الكلي' : 'Full price'} ({getCurrentTeacherCurrency() === 'EGP' ? (isAr ? 'جنيه مصري' : 'EGP') : (isAr ? 'ريال سعودي' : 'SAR')})
+                          </label>
                           <input
                             required
                             type="number"
@@ -1651,7 +1683,9 @@ export default function TeacherContentPage({
                         </div>
 
                         <div className="space-y-1.5">
-                          <label className="text-[11px] font-black text-neutral-500">{isAr ? 'الخصم (اختياري)' : 'Discount Price (Optional)'}</label>
+                          <label className="text-[11px] font-black text-neutral-500">
+                            {isAr ? 'الخصم (اختياري)' : 'Discount Price (Optional)'} ({getCurrentTeacherCurrency() === 'EGP' ? (isAr ? 'جنيه مصري' : 'EGP') : (isAr ? 'ريال سعودي' : 'SAR')})
+                          </label>
                           <input
                             type="number"
                             value={courseDiscount}
@@ -2535,7 +2569,8 @@ export default function TeacherContentPage({
                           className="w-full text-xs font-black py-2.5 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-905 dark:text-neutral-100 outline-none cursor-pointer"
                         >
                           <option value="youtube">YouTube Player</option>
-                          <option value="bunny">Bunny CDN Host</option>
+                          <option value="bunny">Bunny Stream (Bunny.net)</option>
+                          <option value="vimeo">Vimeo Player</option>
                         </select>
                       </div>
 
@@ -2552,6 +2587,19 @@ export default function TeacherContentPage({
                         />
                       </div>
                     </div>
+
+                    {vidLink && (
+                       <div className="p-4 rounded-xl bg-neutral-900 border border-neutral-800 space-y-2">
+                         <label className="text-[10px] text-neutral-500 font-black">{isAr ? 'معاينة الفيديو' : 'Video Preview'}</label>
+                         <SecureVideoPlayer 
+                           videoUrl={vidLink} 
+                           videoSource={vidSource} 
+                           studentName="Preview" 
+                           studentPhone="000" 
+                           isAr={isAr}
+                         />
+                       </div>
+                    )}
 
                     {/* Timing & Settings */}
                     <div className="p-4 bg-neutral-50 dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800 text-right space-y-4">
@@ -2762,7 +2810,8 @@ export default function TeacherContentPage({
                             className="w-full text-xs font-black py-2.5 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 text-neutral-905 dark:text-neutral-100 outline-none cursor-pointer"
                           >
                             <option value="youtube">YouTube Player</option>
-                            <option value="bunny">Bunny CDN Host</option>
+                            <option value="bunny">Bunny Stream (Bunny.net)</option>
+                            <option value="vimeo">Vimeo Player</option>
                           </select>
                         </div>
 

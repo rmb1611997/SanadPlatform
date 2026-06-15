@@ -3,6 +3,7 @@ import { hashPassword } from './crypto';
 export interface UserProfile {
   name: string;
   phone: string;
+  email?: string;
   parentPhone?: string;
   country: 'EG' | 'SA';
   location: string; // Governorate or Region
@@ -14,6 +15,28 @@ export interface UserProfile {
   specialty?: string; // For teachers
   studentCode?: string; // Random unmodifiable 8-digit numeric student code
   isBanned?: boolean; // Blocked students capability
+  subject?: string;
+  subjects?: string[];
+  grades?: string[];
+  supportPhones?: string[];
+  nationality?: string;
+  curriculum?: string;
+  currency?: 'EGP' | 'SAR';
+  cardImage?: string;
+  pageImage?: string;
+  socialLinks?: {
+    facebook?: { url: string; isVisible: boolean };
+    youtube?: { url: string; isVisible: boolean };
+    tiktok?: { url: string; isVisible: boolean };
+    whatsapp?: { url: string; isVisible: boolean };
+    telegram?: { url: string; isVisible: boolean };
+  };
+  lastPasswordChange?: string; // ISO string
+  authorizedDevices?: string[]; // List of unique device/browser IDs
+  teacherCode?: string;
+  status?: 'active' | 'suspended';
+  createdAt?: string;
+  adminNote?: string;
 }
 
 /**
@@ -200,6 +223,7 @@ export async function seedDatabaseIfNeeded() {
     seededUsers.push({
       name: student.name,
       phone: student.phone,
+      email: student.phone + '@gmail.com',
       parentPhone: student.parentPhone,
       country: student.country,
       location: student.location,
@@ -208,7 +232,8 @@ export async function seedDatabaseIfNeeded() {
       grade: student.grade,
       passwordHash: hash,
       role: 'student',
-      studentCode: code
+      studentCode: code,
+      lastPasswordChange: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString() // Seed as 31 days ago to allow initial change
     });
   }
 
@@ -220,7 +245,7 @@ export async function seedDatabaseIfNeeded() {
 }
 
 /**
- * Retrieve all registered users of any role. Matches/migrates missing student unique codes automatically on retrieval.
+ * Retrieve all registered users of any role. Matches/migrates missing student unique codes and teacher administrative fields automatically on retrieval.
  */
 export function getAllUsers(): UserProfile[] {
   const raw = localStorage.getItem('sanad_users_db');
@@ -228,24 +253,76 @@ export function getAllUsers(): UserProfile[] {
   try {
     const users: UserProfile[] = JSON.parse(raw);
     let updated = false;
-    const existingCodes = new Set<string>();
+    const existingStudentCodes = new Set<string>();
+    const existingTeacherCodes = new Set<string>();
 
-    // First draft: extract all non-empty student codes
     users.forEach(u => {
       if (u.studentCode) {
-        existingCodes.add(u.studentCode);
+        existingStudentCodes.add(u.studentCode);
+      }
+      if (u.teacherCode) {
+        existingTeacherCodes.add(u.teacherCode);
       }
     });
 
-    // Check if any student needs a new code
     const migratedUsers = users.map(u => {
-      if (u.role === 'student' && !u.studentCode) {
-        const code = generateUniqueStudentCode(existingCodes);
-        existingCodes.add(code);
-        updated = true;
-        return { ...u, studentCode: code };
+      let changed = false;
+      const newUser = { ...u };
+
+      if (newUser.role === 'student' && !newUser.studentCode) {
+        const code = generateUniqueStudentCode(existingStudentCodes);
+        existingStudentCodes.add(code);
+        newUser.studentCode = code;
+        changed = true;
       }
-      return u;
+
+      if (newUser.role === 'teacher') {
+        if (!newUser.teacherCode) {
+          let codeCandidate = '';
+          let isUnique = false;
+          let attempts = 0;
+          while (!isUnique && attempts < 1000) {
+            attempts++;
+            const num = Math.floor(100000 + Math.random() * 900000);
+            codeCandidate = `T-${num}`;
+            if (!existingTeacherCodes.has(codeCandidate)) {
+              isUnique = true;
+            }
+          }
+          existingTeacherCodes.add(codeCandidate);
+          newUser.teacherCode = codeCandidate;
+          changed = true;
+        }
+        if (!newUser.createdAt) {
+          // default date
+          newUser.createdAt = "2026-06-11";
+          changed = true;
+        }
+        if (!newUser.status) {
+          newUser.status = 'active';
+          changed = true;
+        }
+        if (newUser.adminNote === undefined) {
+          newUser.adminNote = '';
+          changed = true;
+        }
+        if (!newUser.currency) {
+          const cur = newUser.curriculum || '';
+          if (cur.includes('مصر') || cur.includes('Egypt') || cur === 'المنهج المصري') {
+            newUser.currency = 'EGP';
+          } else if (cur.includes('سعود') || cur.includes('Saudi') || cur === 'المنهج السعودي') {
+            newUser.currency = 'SAR';
+          } else {
+            newUser.currency = newUser.country === 'SA' ? 'SAR' : 'EGP';
+          }
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        updated = true;
+      }
+      return newUser;
     });
 
     if (updated) {
@@ -260,11 +337,24 @@ export function getAllUsers(): UserProfile[] {
 }
 
 /**
+ * Update a user's details (Admin operation).
+ */
+export function updateUserByAdmin(phone: string, updatedData: Partial<UserProfile>): boolean {
+  const users = getAllUsers();
+  const index = users.findIndex(u => u.phone === phone);
+  if (index === -1) return false;
+  users[index] = { ...users[index], ...updatedData };
+  localStorage.setItem('sanad_users_db', JSON.stringify(users));
+  return true;
+}
+
+/**
  * Register a new student securely, storing they hashed password. Generates a guaranteed unmodifiable 8-digit random unique student code.
  */
 export async function registerStudent(student: {
   name: string;
   phone: string;
+  email: string;
   parentPhone: string;
   country: 'EG' | 'SA';
   location: string;
@@ -291,6 +381,7 @@ export async function registerStudent(student: {
   const newUser: UserProfile = {
     name: student.name,
     phone: student.phone,
+    email: student.email,
     parentPhone: student.parentPhone,
     country: student.country,
     location: student.location,
@@ -299,7 +390,8 @@ export async function registerStudent(student: {
     grade: student.grade,
     passwordHash: hash,
     role: 'student',
-    studentCode: code
+    studentCode: code,
+    lastPasswordChange: new Date().toISOString(),
   };
 
   localStorage.setItem('sanad_users_db', JSON.stringify([...users, newUser]));
@@ -317,11 +409,41 @@ export async function addTeacherByAdmin(teacher: {
   gender: 'male' | 'female';
   specialty: string;
   passwordPlane: string;
+  subject?: string;
+  subjects?: string[];
+  grades?: string[];
+  supportPhones?: string[];
+  nationality?: string;
+  curriculum?: string;
+  currency?: 'EGP' | 'SAR';
+  cardImage?: string;
+  pageImage?: string;
+  socialLinks?: {
+    facebook?: { url: string; isVisible: boolean };
+    youtube?: { url: string; isVisible: boolean };
+    tiktok?: { url: string; isVisible: boolean };
+    whatsapp?: { url: string; isVisible: boolean };
+    telegram?: { url: string; isVisible: boolean };
+  };
 }): Promise<{ success: boolean; error?: string }> {
   const users = getAllUsers();
   const exists = users.some(u => u.phone === teacher.phone);
   if (exists) {
     return { success: false, error: 'رقم هاتف المدرس مسجل مسبقاً في النظام' };
+  }
+
+  // Generate a unique teacherCode
+  const existingTeacherCodes = new Set(users.map(u => u.teacherCode).filter(Boolean));
+  let codeCandidate = '';
+  let isUnique = false;
+  let attempts = 0;
+  while (!isUnique && attempts < 1000) {
+    attempts++;
+    const num = Math.floor(100000 + Math.random() * 900000);
+    codeCandidate = `T-${num}`;
+    if (!existingTeacherCodes.has(codeCandidate)) {
+      isUnique = true;
+    }
   }
 
   const hash = await hashPassword(teacher.passwordPlane);
@@ -333,7 +455,22 @@ export async function addTeacherByAdmin(teacher: {
     gender: teacher.gender,
     passwordHash: hash,
     role: 'teacher',
-    specialty: teacher.specialty
+    specialty: teacher.specialty,
+    subject: teacher.subject,
+    subjects: teacher.subjects,
+    grades: teacher.grades,
+    supportPhones: teacher.supportPhones,
+    nationality: teacher.nationality,
+    curriculum: teacher.curriculum,
+    currency: teacher.currency,
+    cardImage: teacher.cardImage,
+    pageImage: teacher.pageImage,
+    socialLinks: teacher.socialLinks,
+    // Admin fields
+    teacherCode: codeCandidate,
+    status: 'active',
+    createdAt: new Date().toISOString().split('T')[0],
+    adminNote: ''
   };
 
   localStorage.setItem('sanad_users_db', JSON.stringify([...users, newTeacher]));
@@ -384,6 +521,150 @@ export async function resetUserPassword(phone: string, newPasswordPlane: string)
   
   const hash = await hashPassword(newPasswordPlane);
   users[index].passwordHash = hash;
+  users[index].lastPasswordChange = new Date().toISOString(); 
   localStorage.setItem('sanad_users_db', JSON.stringify(users));
   return true;
+}
+
+/**
+ * Password Reset System Logic
+ */
+export interface PasswordResetToken {
+  token: string;
+  phone: string;
+  expires: string;
+  used: boolean;
+}
+
+export function getResetTokens(): PasswordResetToken[] {
+  const raw = localStorage.getItem('sanad_reset_tokens');
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveResetTokens(tokens: PasswordResetToken[]) {
+  localStorage.setItem('sanad_reset_tokens', JSON.stringify(tokens));
+}
+
+/**
+ * Validates the 30-day password change policy.
+ */
+export function canChangePassword(user: UserProfile): { can: boolean; lastChange?: string; daysRemaining?: number } {
+  if (!user.lastPasswordChange) return { can: true };
+  
+  const lastChange = new Date(user.lastPasswordChange);
+  const now = new Date();
+  const diffTime = Math.abs(now.getTime() - lastChange.getTime());
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 30) {
+    return { 
+      can: false, 
+      lastChange: user.lastPasswordChange,
+      daysRemaining: 30 - diffDays
+    };
+  }
+  
+  return { can: true };
+}
+
+/**
+ * Verifies matching triple identifiers (Phone, Parent Phone, Email)
+ */
+export function verifyResetIdentity(studentPhone: string, parentPhone: string, email: string): UserProfile | null {
+  const users = getAllUsers();
+  const found = users.find(u => 
+    u.phone === studentPhone && 
+    u.parentPhone === parentPhone && 
+    u.email.toLowerCase() === email.toLowerCase() &&
+    u.role === 'student'
+  );
+  return found || null;
+}
+
+/**
+ * Initiates reset by generating a one-time secure link (simulation)
+ */
+export async function initiatePasswordReset(studentPhone: string, parentPhone: string, email: string): Promise<{ success: boolean; token?: string; error?: string }> {
+  const user = verifyResetIdentity(studentPhone, parentPhone, email);
+  if (!user) {
+    return { success: false, error: 'البيانات المدخلة غير متطابقة مع أي حساب مسجل' };
+  }
+
+  // Check 30-day policy
+  const policy = canChangePassword(user);
+  if (!policy.can) {
+    const lastDate = new Date(policy.lastChange!).toLocaleDateString('ar-EG');
+    return { 
+      success: false, 
+      error: `لا يمكن تغيير كلمة المرور حالياً. آخر تغيير كان في ${lastDate}. يرجى المحاولة بعد مرور 30 يوم.` 
+    };
+  }
+
+  // Generate Token
+  const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const expiration = new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString(); // 1 hour
+
+  const tokens = getResetTokens();
+  const newToken: PasswordResetToken = {
+    token,
+    phone: studentPhone,
+    expires: expiration,
+    used: false
+  };
+
+  saveResetTokens([...tokens, newToken]);
+  
+  // In a real system, we'd send an email here.
+  console.log(`[SIMULATION] Password Reset Link for ${email}: https://sanad.platform/reset-password?token=${token}`);
+  
+  return { success: true, token };
+}
+
+/**
+ * Completes the reset with a new password
+ */
+export async function completePasswordReset(token: string, newPasswordPlane: string): Promise<{ success: boolean; error?: string }> {
+  const tokens = getResetTokens();
+  const tokenIdx = tokens.findIndex(t => t.token === token && !t.used);
+  
+  if (tokenIdx === -1) {
+    return { success: false, error: 'رابط إعادة التعيين غير صالح أو تم استخدامه من قبل' };
+  }
+
+  const tokenData = tokens[tokenIdx];
+  if (new Date() > new Date(tokenData.expires)) {
+    return { success: false, error: 'انتهت صلاحية رابط إعادة التعيين' };
+  }
+
+  const users = getAllUsers();
+  const userIdx = users.findIndex(u => u.phone === tokenData.phone);
+  
+  if (userIdx === -1) {
+    return { success: false, error: 'فشل في العثور على المستخدم' };
+  }
+
+  // Update Password
+  const hash = await hashPassword(newPasswordPlane);
+  users[userIdx].passwordHash = hash;
+  users[userIdx].lastPasswordChange = new Date().toISOString();
+  
+  // Update tokens
+  tokens[tokenIdx].used = true;
+  saveResetTokens(tokens);
+  
+  // Save Users
+  localStorage.setItem('sanad_users_db', JSON.stringify(users));
+  
+  addSecurityLog({
+    phone: tokenData.phone,
+    event: 'login_success', // Re-using event type for simplicity or adding a new one
+    role: 'student'
+  });
+
+  return { success: true };
 }

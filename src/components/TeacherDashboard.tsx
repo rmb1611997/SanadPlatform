@@ -4,7 +4,7 @@ import {
   Users, BookOpen, Clock, Play, GraduationCap, PlusCircle, 
   CheckCircle, MessageSquare, LogOut, Check, Search, MapPin, 
   Trash2, Plus, Sparkles, Filter, Award, ShieldCheck, BarChart3, Bell, ClipboardList, UserCheck, HelpCircle, Sun, Moon, Menu, X, Layers,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, DollarSign
 } from 'lucide-react';
 import { coursesData, translations, teachersData } from '../data';
 import { getAllUsers, UserProfile } from '../utils/db';
@@ -16,16 +16,25 @@ import TeacherNotificationsPage from './TeacherNotificationsPage';
 import TeacherStudentsPage from './TeacherStudentsPage';
 import TeacherContentPage from './TeacherContentPage';
 import TeacherStaffPage from './TeacherStaffPage';
+import TeacherEarningsPage from './TeacherEarningsPage';
+import StudentCoursesTab from './StudentCoursesTab';
 
 interface TeacherDashboardProps {
-  user: { name: string; country: 'EG' | 'SA' };
+  user: { name: string; country?: 'EG' | 'SA' };
   lang: 'ar' | 'en';
   onLogout: () => void;
   darkMode: boolean;
   setDarkMode: (dark: boolean) => void;
+  purchasedCourseIds: string[];
+  setPurchasedCourseIds: React.Dispatch<React.SetStateAction<string[]>>;
 }
 
-export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDarkMode }: TeacherDashboardProps) {
+export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDarkMode, purchasedCourseIds, setPurchasedCourseIds }: TeacherDashboardProps) {
+  const handlePreviewCourse = (courseId: string) => {
+    setPreviewCourseId(courseId);
+    setActiveTab('preview_course');
+  };
+
   const isAr = lang === 'ar';
   
   // Find which teacher logged in or generate a fallback teacher data structure matching user
@@ -45,8 +54,9 @@ export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDa
   const [activeTab, setActiveTab] = useState<
     'home' | 'stats_general' | 'notifications' | 'students_roster' | 'student_code_checker' |
     'manage_courses' | 'courses' | 'modules' | 'videos' | 'handouts' | 'tasks' | 'qbank' |
-    'stats_exams' | 'stats_views' | 'staff' | 'profile'
+    'stats_exams' | 'stats_views' | 'staff' | 'profile' | 'earnings' | 'preview_course'
   >('home');
+  const [previewCourseId, setPreviewCourseId] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -57,6 +67,20 @@ export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDa
   useEffect(() => {
     localStorage.setItem('sanad_teacher_sidebar_collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const handleToggle = () => {
+      if (window.innerWidth < 768) {
+        setMobileSidebarOpen(prev => !prev);
+      } else {
+        setSidebarCollapsed(prev => !prev);
+      }
+    };
+    window.addEventListener('sanad_toggle_sidebar', handleToggle);
+    return () => {
+      window.removeEventListener('sanad_toggle_sidebar', handleToggle);
+    };
+  }, []);
 
   // Local courses managed by this teacher
   const [allCourses, setAllCourses] = useState<any[]>(() => {
@@ -129,7 +153,8 @@ export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDa
 
   const menuItems = [
     { id: 'home', labelAr: ' الرئيسية', labelEn: 'Home', icon: GraduationCap },
-    { id: 'stats_general', labelAr: ' الإحصائيات', labelEn: 'General Stats', icon: BarChart3 },
+    { id: 'stats_general', labelAr: ' الإحصائيات العامة', labelEn: 'General Stats', icon: BarChart3 },
+    { id: 'earnings', labelAr: ' الأرباح والمالية 💰', labelEn: 'Earnings & Finances 💰', icon: DollarSign },
     { id: 'notifications', labelAr: ' الإشعارات', labelEn: 'Notifications', icon: Bell },
     { id: 'students_roster', labelAr: ' بيانات الطلاب', labelEn: 'Student Records', icon: Users },
     { id: 'student_code_checker', labelAr: ' تفاصيل كود الطالب', labelEn: 'Student Code Details', icon: ClipboardList },
@@ -258,39 +283,6 @@ export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDa
           ? (sidebarCollapsed ? 'md:mr-0' : 'md:mr-72') 
           : (sidebarCollapsed ? 'md:ml-0' : 'md:ml-72')
       }`}>
-        
-        {/* Sleek, Modern Minimal Top Header Area */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-200/60 dark:border-neutral-800/60 gap-4">
-          <div className="flex items-center gap-3">
-            {/* Extremely Charming Animated Sidebar Toggle Icon Button (Responsive) */}
-            <motion.button
-              whileHover={{ scale: 1.05, y: -1 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                if (window.innerWidth < 768) {
-                  setMobileSidebarOpen(true);
-                } else {
-                  setSidebarCollapsed(!sidebarCollapsed);
-                }
-              }}
-              className="group flex items-center justify-center p-3 bg-white dark:bg-neutral-850 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 border border-slate-200 dark:border-neutral-750 text-neutral-600 dark:text-neutral-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-2xl shadow-sm transition-all duration-300 cursor-pointer focus:outline-none"
-              title={isAr ? 'التحكم في القائمة الجانبية ↔️' : 'Toggle Sidebar ↔️'}
-            >
-              {/* Animated Custom Hamburger to Left/Right Panel Indicator */}
-              <div className="flex flex-col gap-1 w-5 justify-center items-center">
-                <span className={`h-0.5 bg-current rounded-full transition-all duration-300 ${sidebarCollapsed ? 'w-5' : 'w-3.5 -translate-x-0.5'}`} />
-                <span className="h-0.5 bg-current rounded-full w-5 transition-all duration-300" />
-                <span className={`h-0.5 bg-current rounded-full transition-all duration-300 ${sidebarCollapsed ? 'w-5' : 'w-2 translate-x-1'}`} />
-              </div>
-              
-              {/* Dynamic status label inside toggle button */}
-              <span className="max-w-0 overflow-hidden group-hover:max-w-28 group-hover:mr-2 group-hover:ml-0 transition-all duration-300 text-[10px] font-black tracking-wide whitespace-nowrap opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                <span>{isAr ? 'تصغير وعرض' : 'Menu'}</span>
-                {sidebarCollapsed ? '📂' : '📁'}
-              </span>
-            </motion.button>
-          </div>
-        </div>
 
         {/* Tab router workspace switches */}
         <div className="transition-all duration-300">
@@ -302,6 +294,20 @@ export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDa
               allCourses={allCourses}
               teacherCourses={teacherCourses}
               setActiveTab={setActiveTab}
+              onPreviewCourse={handlePreviewCourse}
+            />
+          )}
+
+          {activeTab === 'preview_course' && previewCourseId && (
+            <StudentCoursesTab
+              user={{ name: user.name, phone: '00000', role: 'student' }}
+              lang={lang}
+              walletBalance={99999}
+              setWalletBalance={() => {}}
+              purchasedCourseIds={[previewCourseId]}
+              setPurchasedCourseIds={() => {}}
+              initialCourseId={previewCourseId}
+              initialCourseAction="view"
             />
           )}
 
@@ -312,6 +318,14 @@ export default function TeacherDashboard({ user, lang, onLogout, darkMode, setDa
               teacherCourses={teacherCourses}
               students={students}
               initialSubTab="general"
+            />
+          )}
+
+          {activeTab === 'earnings' && (
+            <TeacherEarningsPage
+              lang={lang}
+              teacherName={teacherMeta.name}
+              teacherCourses={teacherCourses}
             />
           )}
 

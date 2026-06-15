@@ -71,7 +71,7 @@ export default function ReviewSlider({ reviews, lang }: ReviewSliderProps) {
       rotateX: -10,
       transition: { duration: 0.4 }
     })
-  };
+  } as const;
 
   if (!reviews || reviews.length === 0) {
     return (

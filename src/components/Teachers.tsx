@@ -8,6 +8,7 @@ interface TeachersProps {
   teachers: Teacher[];
   lang: 'ar' | 'en';
   onSelectTeacher: (teacherId: string) => void;
+  hideFilters?: boolean;
 }
 
 const arabicPhrases = [
@@ -24,7 +25,7 @@ const englishPhrases = [
   'We create true success stories step-by-step with premier educators 🌟'
 ];
 
-export default function Teachers({ teachers, lang, onSelectTeacher }: TeachersProps) {
+export default function Teachers({ teachers, lang, onSelectTeacher, hideFilters = false }: TeachersProps) {
   const t = translations[lang];
   const phrases = lang === 'ar' ? arabicPhrases : englishPhrases;
   
@@ -76,42 +77,44 @@ export default function Teachers({ teachers, lang, onSelectTeacher }: TeachersPr
         </div>
 
         {/* Global Level Country Segment Control (same as courses) */}
-        <div className="flex justify-center mb-16 relative z-30">
-          <div className="relative overflow-visible">
-            <div className="flex p-1.5 bg-neutral-100/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-2xl shadow-inner border border-neutral-200/60 dark:border-neutral-700 max-w-full overflow-x-auto scroller-hide">
-              <button
-                onClick={() => setSelectedCountry('ALL')}
-                className={`py-2 px-3 whitespace-nowrap text-xs md:text-sm font-black rounded-xl transition duration-200 cursor-pointer ${
-                  selectedCountry === 'ALL'
-                    ? 'bg-white text-neutral-900 shadow-md dark:bg-neutral-750 dark:text-white'
-                    : 'text-neutral-550 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-              >
-                🌐 {lang === 'ar' ? 'جميع المدرسين' : 'All Teachers'}
-              </button>
-              <button
-                onClick={() => setSelectedCountry('EG')}
-                className={`py-2 px-3 whitespace-nowrap text-xs md:text-sm font-black rounded-xl transition duration-200 cursor-pointer ${
-                  selectedCountry === 'EG'
-                    ? 'bg-white text-neutral-900 shadow-md dark:bg-neutral-750 dark:text-white'
-                    : 'text-neutral-550 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-              >
-                🇪🇬 {lang === 'ar' ? 'المنهج المصري' : 'Egyptian'}
-              </button>
-              <button
-                onClick={() => setSelectedCountry('SA')}
-                className={`py-2 px-3 whitespace-nowrap text-xs md:text-sm font-black rounded-xl transition duration-200 cursor-pointer ${
-                  selectedCountry === 'SA'
-                    ? 'bg-white text-neutral-900 shadow-md dark:bg-neutral-750 dark:text-white'
-                    : 'text-neutral-550 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200'
-                }`}
-              >
-                🇸🇦 {lang === 'ar' ? 'المنهج السعودي' : 'Saudi (Tracks)'}
-              </button>
+        {!hideFilters && (
+          <div className="flex justify-center mb-16 relative z-30">
+            <div className="relative overflow-visible">
+              <div className="flex p-1.5 bg-neutral-100/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-2xl shadow-inner border border-neutral-200/60 dark:border-neutral-700 max-w-full overflow-x-auto scroller-hide">
+                <button
+                  onClick={() => setSelectedCountry('ALL')}
+                  className={`py-2 px-3 whitespace-nowrap text-xs md:text-sm font-black rounded-xl transition duration-200 cursor-pointer ${
+                    selectedCountry === 'ALL'
+                      ? 'bg-white text-neutral-900 shadow-md dark:bg-neutral-750 dark:text-white'
+                      : 'text-neutral-550 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200'
+                  }`}
+                >
+                  🌐 {lang === 'ar' ? 'جميع المدرسين' : 'All Teachers'}
+                </button>
+                <button
+                  onClick={() => setSelectedCountry('EG')}
+                  className={`py-2 px-3 whitespace-nowrap text-xs md:text-sm font-black rounded-xl transition duration-200 cursor-pointer ${
+                    selectedCountry === 'EG'
+                      ? 'bg-white text-neutral-900 shadow-md dark:bg-neutral-750 dark:text-white'
+                      : 'text-neutral-550 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200'
+                  }`}
+                >
+                  🇪🇬 {lang === 'ar' ? 'المنهج المصري' : 'Egyptian'}
+                </button>
+                <button
+                  onClick={() => setSelectedCountry('SA')}
+                  className={`py-2 px-3 whitespace-nowrap text-xs md:text-sm font-black rounded-xl transition duration-200 cursor-pointer ${
+                    selectedCountry === 'SA'
+                      ? 'bg-white text-neutral-900 shadow-md dark:bg-neutral-750 dark:text-white'
+                      : 'text-neutral-550 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-200'
+                  }`}
+                >
+                  🇸🇦 {lang === 'ar' ? 'المنهج السعودي' : 'Saudi (Tracks)'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Teachers Cards Grid with animation */}
         {filteredTeachers.length === 0 ? (
@@ -166,18 +169,20 @@ export default function Teachers({ teachers, lang, onSelectTeacher }: TeachersPr
                 };
 
                 const getSubjectLabel = (sub?: string) => {
+                  if (!sub) return lang === 'ar' ? 'المناهج العامة المعتمدة' : 'General Academic Specialty';
+                  const subLower = sub.toLowerCase();
                   if (lang === 'ar') {
-                    if (sub === 'physics') return 'الفيزياء والمسارات العلمية';
-                    if (sub === 'math') return 'الرياضيات والقدرات قياس';
-                    if (sub === 'chemistry') return 'الكيمياء والبيولوجيا العضوية';
-                    if (sub === 'biology') return 'علم الأحياء والجيولوجيا';
-                    return 'المناهج العامة المعتمدة';
+                    if (subLower === 'physics') return 'الفيزياء والمسارات العلمية';
+                    if (subLower === 'math') return 'الرياضيات والقدرات قياس';
+                    if (subLower === 'chemistry') return 'الكيمياء والبيولوجيا العضوية';
+                    if (subLower === 'biology') return 'علم الأحياء والجيولوجيا';
+                    return sub;
                   } else {
-                    if (sub === 'physics') return 'Physics & Advanced Tracks';
-                    if (sub === 'math') return 'Mathematics & Qudrat Exam';
-                    if (sub === 'chemistry') return 'Modern Organic Chemistry';
-                    if (sub === 'biology') return 'Biology & Earth Geology';
-                    return 'General Academic Specialty';
+                    if (subLower === 'physics') return 'Physics & Advanced Tracks';
+                    if (subLower === 'math') return 'Mathematics & Qudrat Exam';
+                    if (subLower === 'chemistry') return 'Modern Organic Chemistry';
+                    if (subLower === 'biology') return 'Biology & Earth Geology';
+                    return sub;
                   }
                 };
 
@@ -213,7 +218,14 @@ export default function Teachers({ teachers, lang, onSelectTeacher }: TeachersPr
                     <div className="absolute -top-16 md:-top-20 left-1/2 -smart-translate-x-1/2 transform -translate-x-1/2 select-none z-10">
                       <div className={`relative h-44 w-44 md:h-56 md:w-56 rounded-[44px] p-2 bg-gradient-to-tr ${grad} shadow-xl transform group-hover:scale-105 group-hover:rotate-2 transition-all duration-350 flex items-center justify-center`}>
                         <div className="w-full h-full rounded-[36px] bg-white dark:bg-neutral-900 flex items-center justify-center overflow-hidden border border-white/20 shadow-inner">
-                          {teacher.avatar && teacher.avatar.length <= 4 ? (
+                          {teacher.cardImage ? (
+                            <img 
+                              src={teacher.cardImage} 
+                              alt={teacher.name} 
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover" 
+                            />
+                          ) : teacher.avatar && teacher.avatar.length <= 4 ? (
                             <span className="text-[100px] md:text-[130px] select-none leading-none pt-2" role="img" aria-label={teacher.name}>
                               {teacher.avatar}
                             </span>

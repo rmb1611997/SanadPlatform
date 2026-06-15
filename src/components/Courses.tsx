@@ -17,6 +17,7 @@ interface CoursesProps {
   onSubscribeClick?: (course: Course) => void;
   onViewCourseClick?: (course: Course) => void;
   purchasedCourseIds?: string[];
+  hideFilters?: boolean;
 }
 
 export default function Courses({ 
@@ -29,7 +30,8 @@ export default function Courses({
   isLoggedIn = false,
   onSubscribeClick,
   onViewCourseClick,
-  purchasedCourseIds = []
+  purchasedCourseIds = [],
+  hideFilters = false
 }: CoursesProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [localCountryFilter, setLocalCountryFilter] = useState<'all' | 'EG' | 'SA'>('all');
@@ -128,8 +130,8 @@ export default function Courses({
           )}
         </div>
 
-        {/* Filters Panel Container - Hidden in suggested only mode */}
-        {!suggestedOnly && (
+        {/* Filters Panel Container - Hidden in suggested only mode or when hideFilters is true */}
+        {!suggestedOnly && !hideFilters && (
           <div className="space-y-6 mb-10">
             <div className="flex flex-col items-center justify-center space-y-4 text-center max-w-2xl mx-auto">
               <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full p-1 rounded-2xl bg-neutral-150/50 dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 max-w-lg shadow-sm">
@@ -281,6 +283,14 @@ export default function Courses({
                       <h3 className="text-xl font-black text-neutral-850 dark:text-neutral-100 leading-snug">
                         {activeCourseDetails.title}
                       </h3>
+
+                      {purchasedCourseIds.includes(activeCourseDetails.id) && (
+                        <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl w-max">
+                          <span className="text-emerald-600 dark:text-emerald-400 text-xs font-black">
+                            ✅ {lang === 'ar' ? 'أنت مشترك في هذا الكورس' : 'You are enrolled in this course'}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Tutor info */}
                       <div className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-neutral-900/50 rounded-xl">
@@ -501,22 +511,24 @@ export default function Courses({
                   </div>
 
                   {/* Action row price and buy button */}
-                  <div className="flex items-center justify-between pt-4 border-t border-neutral-100 dark:border-neutral-750">
-                    <div>
-                      <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-bold uppercase">{lang === 'ar' ? 'سعر المقرّر بالكامل' : 'Full price'}</p>
-                      <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                        {activeCourseDetails.price} {activeCourseDetails.currency}
-                      </p>
-                    </div>
+                  {!purchasedCourseIds.includes(activeCourseDetails.id) && (
+                    <div className="flex items-center justify-between pt-4 border-t border-neutral-100 dark:border-neutral-750">
+                      <div>
+                        <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-bold uppercase">{lang === 'ar' ? 'سعر المقرّر بالكامل' : 'Full price'}</p>
+                        <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                          {activeCourseDetails.price} {activeCourseDetails.currency}
+                        </p>
+                      </div>
 
-                    <button
-                      onClick={handleEnrollMock}
-                      className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 transition flex items-center gap-2 shadow-md shadow-indigo-650/10 cursor-pointer border-0"
-                    >
-                      <Sparkles className="h-4 w-4 text-white" />
-                      <span>{lang === 'ar' ? 'اشترك الآن بالتفعيل الفوري' : 'Enroll in course'}</span>
-                    </button>
-                  </div>
+                      <button
+                        onClick={handleEnrollMock}
+                        className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 transition flex items-center gap-2 shadow-md shadow-indigo-650/10 cursor-pointer border-0"
+                      >
+                        <Sparkles className="h-4 w-4 text-white" />
+                        <span>{lang === 'ar' ? 'اشترك الآن بالتفعيل الفوري' : 'Enroll in course'}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>

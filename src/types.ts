@@ -51,10 +51,23 @@ export interface Teacher {
   avatar: string;
   studentsCount: number;
   subject?: string;
+  subjects?: string[];
   grades?: string[];
   curriculumAr?: string;
   curriculumEn?: string;
   country?: 'EG' | 'SA' | 'both';
+  supportPhones?: string[];
+  nationality?: string;
+  curriculum?: string;
+  cardImage?: string;
+  pageImage?: string;
+  socialLinks?: {
+    facebook?: { url: string; isVisible: boolean };
+    youtube?: { url: string; isVisible: boolean };
+    tiktok?: { url: string; isVisible: boolean };
+    whatsapp?: { url: string; isVisible: boolean };
+    telegram?: { url: string; isVisible: boolean };
+  };
 }
 
 export interface Feature {
